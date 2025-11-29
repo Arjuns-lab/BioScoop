@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Play, Download, Plus, Share2, Star, Calendar, Clock, ChevronDown, Check } from 'lucide-react';
@@ -18,6 +19,7 @@ const Details: React.FC<DetailsProps> = ({ user, logout }) => {
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [isDownloadOpen, setIsDownloadOpen] = useState(false);
   const [downloadState, setDownloadState] = useState<'idle' | 'downloading' | 'done'>('idle');
+  const [isInWatchlist, setIsInWatchlist] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,6 +31,14 @@ const Details: React.FC<DetailsProps> = ({ user, logout }) => {
            // Mock similar based on genre
            const all = await dataService.getAllContent();
            setSimilar(all.filter(c => c.id !== item.id && c.genres.some(g => item.genres.includes(g))));
+           
+           // Check watchlist status
+           const currentUser = dataService.getCurrentUser();
+           if (currentUser && currentUser.watchlist.includes(item.id)) {
+               setIsInWatchlist(true);
+           } else {
+               setIsInWatchlist(false);
+           }
         }
       }
     };
@@ -57,6 +67,15 @@ const Details: React.FC<DetailsProps> = ({ user, logout }) => {
         setDownloadState('done');
         setTimeout(() => setDownloadState('idle'), 3000);
      }, 2000);
+  };
+
+  const toggleWatchlist = async () => {
+      if (!user) {
+          navigate('/login');
+          return;
+      }
+      await dataService.toggleWatchlist(content.id);
+      setIsInWatchlist(!isInWatchlist);
   };
 
   const currentSeason = content.seasons?.find(s => s.seasonNumber === selectedSeason);
@@ -133,8 +152,12 @@ const Details: React.FC<DetailsProps> = ({ user, logout }) => {
                      )}
                   </div>
 
-                  <button className="p-3 rounded-full border border-gray-600 hover:border-white text-gray-300 hover:text-white transition-colors">
-                     <Plus size={20} />
+                  <button 
+                     onClick={toggleWatchlist}
+                     className={`p-3 rounded-full border transition-colors ${isInWatchlist ? 'bg-white text-black border-white' : 'border-gray-600 hover:border-white text-gray-300 hover:text-white'}`}
+                     title={isInWatchlist ? "Remove from Watchlist" : "Add to Watchlist"}
+                  >
+                     {isInWatchlist ? <Check size={20} /> : <Plus size={20} />}
                   </button>
                   <button className="p-3 rounded-full border border-gray-600 hover:border-white text-gray-300 hover:text-white transition-colors">
                      <Share2 size={20} />

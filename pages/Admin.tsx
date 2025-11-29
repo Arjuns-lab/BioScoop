@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Edit2, Film, Tv, Star, Check, X, Layers, FileVideo, MonitorPlay, Image as ImageIcon, AlertCircle, Upload, Paperclip, Loader2, Info, Search, Filter, Settings2, ShieldAlert, Save, UploadCloud, ArrowLeft, FileCode, FileType, Users } from 'lucide-react';
+import { Plus, Trash2, Edit2, Film, Tv, Star, Check, X, Layers, FileVideo, MonitorPlay, Image as ImageIcon, AlertCircle, Upload, Paperclip, Loader2, Info, Search, Filter, Settings2, ShieldAlert, Save, UploadCloud, ArrowLeft, FileCode, FileType, Users, Clock } from 'lucide-react';
 import { dataService } from '../services/dataService';
 import { Content, User } from '../types';
 import AdminLayout from '../components/AdminLayout';
@@ -194,7 +194,8 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
               else if (fieldName === 'videoUrl' && videoSourceType === 'hls') mockUrl = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
               else if (fieldName.includes('quality') || fieldName === 'videoUrl') mockUrl = 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
 
-              setFormData(prev => ({ ...prev, [fieldName]: mockUrl }));
+              // Cast prev to any to avoid type errors when assigning string URL to potentially number fields
+              setFormData((prev: any) => ({ ...prev, [fieldName]: mockUrl }));
               
               // Clear progress after short delay
               setTimeout(() => {
@@ -213,7 +214,7 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
   // Helper for rendering inputs with upload
   const renderUploadInput = (
     label: string, 
-    field: keyof typeof formData, 
+    field: keyof typeof formData & string,
     placeholder: string, 
     icon: React.ElementType,
     helperText?: string,
@@ -303,7 +304,7 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
             await dataService.addContent(contentData);
             alert('Content added successfully!');
             resetForm();
-            // Optional: navigate to dashboard or stay
+            // Stay on upload page for next upload
         }
         loadData();
     } catch (error) {
@@ -322,8 +323,11 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
 
   // Filter Logic
   const filteredContents = contents.filter(c => {
-      const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            c.genres.some(g => g.toLowerCase().includes(searchQuery.toLowerCase()));
+      const lowerQ = searchQuery.toLowerCase();
+      const matchesSearch = c.title.toLowerCase().includes(lowerQ) || 
+                            c.genres.some(g => g.toLowerCase().includes(lowerQ)) ||
+                            c.type.toLowerCase().includes(lowerQ);
+      
       const matchesGenre = selectedGenre === 'All' || c.genres.includes(selectedGenre);
       
       if(activeTab === 'movies') return c.type === 'movie' && matchesSearch && matchesGenre;
@@ -396,6 +400,31 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                        {activeTab === 'dashboard' ? 'Content Library' : `${activeTab} List`}
                        <span className="bg-gray-800 text-xs py-0.5 px-2 rounded-full text-gray-400">{filteredContents.length}</span>
                    </h2>
+                   
+                   {/* Add Movie Shortcut */}
+                   {activeTab === 'movies' && (
+                        <button 
+                            onClick={() => {
+                                setFormData(prev => ({ ...prev, type: 'movie' }));
+                                setActiveTab('upload');
+                            }}
+                            className="ml-4 flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
+                        >
+                            <Plus size={14} /> Add Movie
+                        </button>
+                   )}
+                   {/* Add Series Shortcut */}
+                   {activeTab === 'series' && (
+                        <button 
+                            onClick={() => {
+                                setFormData(prev => ({ ...prev, type: 'series' }));
+                                setActiveTab('upload');
+                            }}
+                            className="ml-4 flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
+                        >
+                            <Plus size={14} /> Add Series
+                        </button>
+                   )}
                </div>
                
                <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
@@ -404,7 +433,7 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                        <Search className="absolute left-3 top-2.5 text-gray-500 group-focus-within:text-brand-500 transition-colors" size={18} />
                        <input 
                           type="text" 
-                          placeholder="Search title, genre..." 
+                          placeholder="Search title, genre, type..." 
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="w-full bg-dark-950 border border-gray-700 pl-10 pr-4 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
@@ -525,8 +554,10 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto">
             <div className="flex items-center justify-between mb-8">
                <div>
-                  <h1 className="text-3xl font-bold text-white">Upload Content</h1>
-                  <p className="text-gray-400 mt-1">Add new movies or series to the platform</p>
+                  <h1 className="text-3xl font-bold text-white">
+                      {formData.type === 'movie' ? 'Upload New Movie' : 'Create New Series'}
+                  </h1>
+                  <p className="text-gray-400 mt-1">Add details and media files to your library</p>
                </div>
                <div className="bg-dark-900 p-1 rounded-xl flex border border-gray-800">
                   <button 
@@ -559,7 +590,7 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                            type="text" 
                            required
                            className="w-full bg-dark-950 border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                           placeholder="e.g. Kalki 2898 AD"
+                           placeholder={formData.type === 'movie' ? "e.g. Kalki 2898 AD" : "e.g. The Family Man"}
                            value={formData.title}
                            onChange={e => setFormData({...formData, title: e.target.value})}
                         />
@@ -597,7 +628,7 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                            required
                            rows={3}
                            className="w-full bg-dark-950 border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 focus:outline-none"
-                           placeholder="Movie plot summary..."
+                           placeholder="Plot summary..."
                            value={formData.description}
                            onChange={e => setFormData({...formData, description: e.target.value})}
                         />
@@ -684,14 +715,31 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                         {/* HLS Workflow */}
                         {videoSourceType === 'hls' && (
                            <div className="animate-in fade-in slide-in-from-left-2">
-                              {renderUploadInput(
-                                  'Master Playlist URL', 
-                                  'videoUrl', 
-                                  'https://.../master.m3u8', 
-                                  FileCode, 
-                                  'Provide the .m3u8 master playlist for adaptive streaming.',
-                                  'M3U8'
-                              )}
+                              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+                                  <div className="md:col-span-8 lg:col-span-9">
+                                      {renderUploadInput(
+                                          'Master Playlist URL', 
+                                          'videoUrl', 
+                                          'https://.../master.m3u8', 
+                                          FileCode, 
+                                          'Provide the .m3u8 master playlist for adaptive streaming.',
+                                          'M3U8'
+                                      )}
+                                  </div>
+                                  <div className="md:col-span-4 lg:col-span-3">
+                                      <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
+                                         <Clock size={14} /> Duration
+                                      </label>
+                                       <input 
+                                          type="text" 
+                                          className="w-full bg-dark-950 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:border-brand-500 focus:outline-none"
+                                          placeholder="e.g. 2h 45m"
+                                          value={formData.duration}
+                                          onChange={e => setFormData({...formData, duration: e.target.value})}
+                                       />
+                                       <p className="text-xs text-transparent select-none mt-2">spacer</p>
+                                  </div>
+                              </div>
                               <div className="mt-4 bg-brand-900/20 p-3 rounded-lg border border-brand-900/50 flex gap-2 items-center">
                                  <Info size={16} className="text-brand-400" />
                                  <p className="text-xs text-brand-300">HLS allows the player to automatically adjust quality based on user internet speed.</p>
@@ -703,49 +751,60 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                         {videoSourceType === 'mp4' && (
                            <div className="animate-in fade-in slide-in-from-right-2 space-y-6">
                               
-                              {/* Primary Video */}
-                              <div className="bg-dark-950/50 p-4 rounded-xl border border-gray-800">
-                                 <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                                     <Star size={14} className="text-yellow-500" /> Primary Source (Required)
-                                 </h4>
-                                 {renderUploadInput(
-                                     'Primary Video URL', 
-                                     'videoUrl', 
-                                     'https://.../movie.mp4', 
-                                     FileVideo, 
-                                     'This file will be used as the default playback source.',
-                                     'MP4'
-                                 )}
+                              {/* Primary Video & Duration */}
+                              <div className="bg-dark-950/50 p-5 rounded-xl border border-gray-800">
+                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                                     <div className="md:col-span-8 lg:col-span-9">
+                                        <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                                            <Star size={14} className="text-yellow-500" /> Primary Source (Required)
+                                        </h4>
+                                        {renderUploadInput(
+                                            'Primary Video URL (.mp4)', 
+                                            'videoUrl', 
+                                            'https://.../movie.mp4', 
+                                            FileVideo, 
+                                            'This file will be used as the default playback source.',
+                                            'MP4'
+                                        )}
+                                     </div>
+                                     <div className="md:col-span-4 lg:col-span-3">
+                                         <h4 className="text-sm font-bold text-gray-400 mb-4 flex items-center gap-2">
+                                             <Clock size={14} /> Duration
+                                         </h4>
+                                         <div className="mt-1">
+                                             <label className="block text-sm font-medium text-gray-400 mb-2 sr-only">Duration</label>
+                                             <input 
+                                                type="text" 
+                                                className="w-full bg-dark-950 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:border-brand-500 focus:outline-none"
+                                                placeholder="e.g. 2h 45m"
+                                                value={formData.duration}
+                                                onChange={e => setFormData({...formData, duration: e.target.value})}
+                                             />
+                                             <p className="text-xs text-gray-500 mt-2">Format: 2h 30m</p>
+                                         </div>
+                                     </div>
+                                 </div>
                               </div>
 
                               {/* Quality Variants */}
-                              <div className="border border-dashed border-gray-700 p-4 rounded-xl">
-                                 <h4 className="text-sm font-bold text-gray-300 mb-4 flex items-center gap-2">
-                                     <Layers size={14} /> Quality Variants (Optional)
-                                 </h4>
-                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                                     {renderUploadInput('1080p (Full HD)', 'quality1080p', '...1080p.mp4', FileVideo, '', 'MP4')}
-                                     {renderUploadInput('720p (HD)', 'quality720p', '...720p.mp4', FileVideo, '', 'MP4')}
-                                     {renderUploadInput('480p (SD)', 'quality480p', '...480p.mp4', FileVideo, '', 'MP4')}
+                              <div className="border border-dashed border-gray-700 p-6 rounded-xl bg-dark-900/30">
+                                 <div className="flex items-center justify-between mb-6">
+                                     <h4 className="text-sm font-bold text-gray-300 flex items-center gap-2">
+                                         <Layers size={14} /> Quality Variants (Optional)
+                                     </h4>
+                                     <span className="text-[10px] text-gray-500 bg-gray-800 px-2 py-1 rounded border border-gray-700">MP4 Only</span>
                                  </div>
-                                 <p className="text-xs text-gray-500 mt-3 text-center">
+                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                     {renderUploadInput('1080p (Full HD) (Optional)', 'quality1080p', '...1080p.mp4', FileVideo, 'Optional', 'MP4')}
+                                     {renderUploadInput('720p (HD) (Optional)', 'quality720p', '...720p.mp4', FileVideo, 'Optional', 'MP4')}
+                                     {renderUploadInput('480p (Standard) (Optional)', 'quality480p', '...480p.mp4', FileVideo, 'Optional', 'MP4')}
+                                 </div>
+                                 <p className="text-xs text-gray-500 mt-4 text-center">
                                      Adding variants allows users to manually switch quality or download specific sizes.
                                  </p>
                               </div>
                            </div>
                         )}
-                        
-                        {/* Duration Field (Common) */}
-                        <div className="pt-2">
-                             <label className="block text-sm font-medium text-gray-400 mb-2">Duration</label>
-                             <input 
-                                type="text" 
-                                className="w-full md:w-1/3 bg-dark-950 border border-gray-700 rounded-lg p-3 text-white focus:border-brand-500 focus:outline-none"
-                                placeholder="e.g. 2h 45m"
-                                value={formData.duration}
-                                onChange={e => setFormData({...formData, duration: e.target.value})}
-                             />
-                        </div>
                      </div>
                   )}
                </section>

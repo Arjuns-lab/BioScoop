@@ -6,9 +6,10 @@ import Details from './pages/Details';
 import PlayerPage from './pages/Player';
 import Admin from './pages/Admin';
 import SettingsPage from './pages/Settings';
+import MyList from './pages/MyList';
 import { dataService } from './services/dataService';
-import { User } from './types';
-import { Phone, Mail, ArrowRight, Loader2, KeyRound, ArrowLeft } from 'lucide-react';
+import { User, PlatformSettings } from './types';
+import { Phone, Mail, ArrowRight, Loader2, KeyRound, ArrowLeft, Bell, ShieldAlert } from 'lucide-react';
 
 // Enhanced Login Component with Mobile OTP & Email Toggle
 const Login = ({ onLogin }: { onLogin: (identifier: string, method: 'email' | 'phone') => void }) => {
@@ -196,6 +197,7 @@ const Login = ({ onLogin }: { onLogin: (identifier: string, method: 'email' | 'p
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
 
   useEffect(() => {
     // Auth Init
@@ -218,6 +220,14 @@ const App: React.FC = () => {
             console.error('Failed to load theme', e);
         }
     }
+
+    // Load Platform Settings
+    const loadSettings = async () => {
+        const settings = await dataService.getPlatformSettings();
+        setPlatformSettings(settings);
+    };
+    loadSettings();
+
   }, []);
 
   const handleLogin = async (identifier: string, method: 'email' | 'phone') => {
@@ -235,8 +245,36 @@ const App: React.FC = () => {
      setUser(null);
   };
 
+  // Maintenance Mode Check
+  if (platformSettings?.maintenanceMode && user && !user.isAdmin) {
+      return (
+         <div className="min-h-screen bg-dark-950 flex flex-col items-center justify-center text-white p-4 text-center">
+            <div className="w-24 h-24 bg-red-900/20 rounded-full flex items-center justify-center mb-6 border border-red-500/20 animate-pulse">
+                <ShieldAlert size={48} className="text-red-500" />
+            </div>
+            <h1 className="text-3xl font-bold mb-3">Under Maintenance</h1>
+            <p className="text-gray-400 max-w-md leading-relaxed">
+               BioScoop is currently undergoing scheduled maintenance to improve your experience. We will be back shortly.
+            </p>
+            {user && (
+                <button onClick={handleLogout} className="mt-8 text-sm text-gray-500 hover:text-white underline">
+                    Sign Out
+                </button>
+            )}
+         </div>
+      );
+  }
+
   return (
     <Router>
+      {/* Global Alert Banner */}
+      {platformSettings?.globalAlert && (
+          <div className="bg-gradient-to-r from-brand-600 to-blue-600 text-white text-center py-2 px-4 text-sm font-bold flex items-center justify-center gap-2 animate-in slide-in-from-top sticky top-0 z-[60] shadow-lg">
+             <Bell size={16} className="animate-pulse" />
+             {platformSettings.globalAlert}
+          </div>
+      )}
+
       <Routes>
         <Route path="/" element={<Home user={user} logout={handleLogout} />} />
         <Route path="/movies" element={<Home user={user} logout={handleLogout} />} />
@@ -252,6 +290,8 @@ const App: React.FC = () => {
         
         <Route path="/settings" element={user ? <SettingsPage user={user} logout={handleLogout} /> : <Navigate to="/login" />} />
         
+        <Route path="/mylist" element={user ? <MyList user={user} logout={handleLogout} /> : <Navigate to="/login" />} />
+
         {/* Search Placeholder Route */}
         <Route path="/search" element={<Home user={user} logout={handleLogout} />} />
       </Routes>

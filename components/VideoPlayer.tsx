@@ -432,8 +432,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
                   className={`
                     flex items-center gap-2 transition-all duration-300 rounded-full p-2 relative overflow-hidden
                     ${downloadStatus === 'idle' ? 'hover:bg-white/10 text-white hover:text-brand-500' : ''}
-                    ${downloadStatus === 'downloading' ? 'text-brand-400 pr-4 border border-brand-500/30' : ''}
-                    ${downloadStatus === 'success' ? 'bg-green-500/20 text-green-400 pr-4 cursor-default' : ''}
+                    ${downloadStatus === 'downloading' ? 'text-brand-400 pr-6 pl-3 border border-brand-500/30 bg-black/50' : ''}
+                    ${downloadStatus === 'success' ? 'bg-green-500/20 text-green-400 pr-6 pl-3 cursor-default border border-green-500/30' : ''}
                   `}
                   title="Download"
                   disabled={downloadStatus !== 'idle'}
@@ -449,15 +449,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
                     
                     {downloadStatus === 'downloading' && (
                         <div className="relative z-10 flex items-center gap-2">
-                            <Loader2 size={24} className="animate-spin" />
-                            <span className="text-sm font-bold tabular-nums w-10 text-center">{Math.round(downloadProgress)}%</span>
+                            <Loader2 size={18} className="animate-spin" />
+                            <span className="text-sm font-bold">Downloading...</span>
+                            <span className="text-xs opacity-80 tabular-nums w-8 text-right">{Math.round(downloadProgress)}%</span>
                         </div>
                     )}
                     
                     {downloadStatus === 'success' && (
                         <div className="relative z-10 flex items-center gap-2">
-                            <Check size={24} />
-                            <span className="text-sm font-bold">Saved</span>
+                            <Check size={18} />
+                            <span className="text-sm font-bold">Success</span>
                         </div>
                     )}
                 </button>

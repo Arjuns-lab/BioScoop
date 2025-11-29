@@ -310,6 +310,30 @@ class DataService {
     localStorage.removeItem(USER_KEY);
   }
 
+  // Watchlist Management
+  async toggleWatchlist(contentId: string): Promise<string[]> {
+    const user = this.getCurrentUser();
+    if (!user) return [];
+
+    const index = user.watchlist.indexOf(contentId);
+    if (index === -1) {
+        user.watchlist.push(contentId);
+    } else {
+        user.watchlist.splice(index, 1);
+    }
+    
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    return user.watchlist;
+  }
+
+  async getWatchlistContent(): Promise<Content[]> {
+      const user = this.getCurrentUser();
+      if (!user) return [];
+      
+      const allContent = this.getContentFromStorage(); // Synchronous for this mock
+      return allContent.filter(c => user.watchlist.includes(c.id));
+  }
+
   // Admin User Management (Mock) - RESTRICTED
   async getAllUsers(): Promise<User[]> {
       await delay(500);
