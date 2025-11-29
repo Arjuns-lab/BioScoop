@@ -41,6 +41,9 @@ export interface Content {
   // Series specific
   seasons?: Season[];
   
+  // UI Specific (calculated at runtime)
+  progress?: number; // 0-100 percentage for Continue Watching
+  
   createdAt: string;
 }
 
@@ -61,7 +64,7 @@ export interface User {
   name: string;
   isAdmin: boolean;
   watchlist: string[];
-  continueWatching: { contentId: string; progress: number }[];
+  continueWatching: { contentId: string; progress: number; duration: number; timestamp: number }[];
 }
 
 export interface PlatformSettings {

@@ -103,6 +103,18 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
       setIsInputFocused(false);
   };
 
+  const handleMobileSearchClick = () => {
+    setIsMobileMenuOpen(true);
+    // Ensure the menu is rendered before focusing and scrolling
+    setTimeout(() => {
+        const input = document.getElementById('mobile-search-input');
+        if (input) {
+            input.focus();
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, 100);
+  };
+
   const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Movies', path: '/movies' },
@@ -211,13 +223,14 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             </div>
           </div>
 
-          {/* Right Icons */}
+          {/* Right Icons (Desktop) */}
           <div className="hidden md:flex items-center gap-6">
             {isSearchOpen ? (
               <form onSubmit={handleSearch} className="relative">
                 <input
                   autoFocus
                   type="text"
+                  autoComplete="off"
                   placeholder="Titles, people, genres"
                   className="bg-black/50 border border-gray-600 text-white text-sm rounded-full px-4 py-1.5 focus:outline-none focus:border-brand-500 w-64 transition-all"
                   value={searchQuery}
@@ -260,7 +273,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                  <div className="absolute right-0 top-12 w-56 bg-dark-900 border border-gray-800 rounded-xl shadow-2xl py-2 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all transform origin-top-right">
                     <div className="px-4 py-3 border-b border-gray-800">
                        <p className="text-sm font-bold text-white truncate">{user.name}</p>
-                       <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                       <p className="text-xs text-gray-400 truncate">{user.email || user.phoneNumber}</p>
                     </div>
                     {user.isAdmin && (
                         <Link to="/admin" className="flex items-center gap-3 px-4 py-3 text-sm text-brand-400 hover:bg-dark-800 transition-colors">
@@ -282,11 +295,20 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
+          {/* Mobile Buttons */}
+          <div className="md:hidden flex items-center gap-2">
+            <button
+              onClick={handleMobileSearchClick}
+              className="text-gray-300 hover:text-white p-2 rounded-full hover:bg-white/10"
+              aria-label="Search"
+            >
+              <Search size={22} />
+            </button>
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="text-gray-300 hover:text-white p-2"
+              className="text-gray-300 hover:text-white p-2 rounded-full hover:bg-white/10"
+              aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={isMobileMenuOpen}
             >
               {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -296,15 +318,17 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div className="md:hidden bg-dark-950 border-t border-gray-800 absolute w-full h-screen overflow-y-auto pb-20">
-          <div className="px-4 pt-2 pb-6 space-y-2">
-             <form onSubmit={handleSearch} className="mb-4 mt-2">
+        <div className="md:hidden bg-dark-950 border-t border-gray-800 fixed inset-x-0 top-20 bottom-0 overflow-y-auto z-40 animate-in slide-in-from-top-4 duration-200">
+          <div className="px-4 pt-4 pb-6 space-y-2">
+             <form onSubmit={handleSearch} className="mb-6">
                 <div className="relative">
-                   <Search className="absolute left-3 top-2.5 text-gray-500" size={18}/>
+                   <Search className="absolute left-3 top-3 text-gray-500" size={18}/>
                    <input 
+                      id="mobile-search-input"
                       type="text" 
-                      placeholder="Search movies..." 
-                      className="w-full bg-dark-900 rounded-lg py-2 pl-10 pr-4 text-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      autoComplete="off"
+                      placeholder="Search movies, shows..." 
+                      className="w-full bg-dark-900 rounded-xl py-2.5 pl-10 pr-4 text-white focus:outline-none focus:ring-1 focus:ring-brand-500 border border-gray-800 focus:border-brand-500"
                       value={searchQuery}
                       onChange={handleSearchChange}
                       onFocus={() => setIsInputFocused(true)}
@@ -319,37 +343,40 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
                 </div>
              </form>
 
-            {navLinks.map((link) => (
-              <Link
-                key={link.name}
-                to={link.path}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={`block px-3 py-2 rounded-md text-base font-medium ${
-                  isActive(link.path) ? 'text-white bg-dark-800' : 'text-gray-400 hover:text-white hover:bg-dark-800'
-                }`}
-              >
-                {link.name}
-              </Link>
-            ))}
-            <div className="border-t border-gray-800 my-2 pt-2">
+            <div className="space-y-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.name}
+                  to={link.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`block px-4 py-3 rounded-lg text-base font-medium transition-colors ${
+                    isActive(link.path) ? 'text-white bg-dark-800 border-l-4 border-brand-500' : 'text-gray-400 hover:text-white hover:bg-dark-800'
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              ))}
+            </div>
+
+            <div className="border-t border-gray-800 my-4 pt-4">
                {user ? (
                   <>
-                     <div className="px-3 py-2 text-gray-500 text-xs font-bold uppercase tracking-wider">Account</div>
+                     <div className="px-4 py-2 text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">My Account</div>
                      {user.isAdmin && (
-                        <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 text-brand-400 font-medium">
+                        <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 text-brand-400 font-medium hover:bg-dark-900 rounded-lg">
                            <LayoutDashboard size={18} /> Admin Dashboard
                         </Link>
                      )}
-                     <Link to="/settings" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 text-gray-300 font-medium hover:text-white">
+                     <Link to="/settings" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 text-gray-300 font-medium hover:text-white hover:bg-dark-900 rounded-lg">
                         <Settings size={18} /> Settings
                      </Link>
-                     <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-red-400 font-medium hover:bg-dark-900">
+                     <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} className="flex w-full items-center gap-3 px-4 py-3 text-red-400 font-medium hover:bg-dark-900 rounded-lg">
                         <LogOut size={18} /> Sign Out
                      </button>
                   </>
                ) : (
-                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-2 text-white font-medium">
-                     Sign In
+                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="block w-full text-center bg-brand-600 text-white px-4 py-3 rounded-lg font-bold shadow-lg shadow-brand-900/50">
+                     Sign In / Register
                   </Link>
                )}
             </div>

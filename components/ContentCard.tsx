@@ -66,15 +66,25 @@ const ContentCard: React.FC<ContentCardProps> = ({ content }) => {
   };
 
   return (
-    <Link to={`/details/${content.id}`} className="group relative flex-none w-[220px] md:w-[300px] aspect-video cursor-pointer transition-transform duration-300 ease-in-out hover:scale-105 hover:z-20">
+    <Link to={`/details/${content.id}`} className="group relative flex-none w-[220px] md:w-[300px] aspect-video cursor-pointer transition-transform duration-300 ease-in-out hover:scale-105 hover:z-20 block bg-dark-900 rounded-lg overflow-hidden">
       <img
         src={content.bannerUrl}
         alt={content.title}
-        className="w-full h-full object-cover rounded-lg shadow-lg group-hover:shadow-brand-500/20"
+        className="w-full h-full object-cover shadow-lg group-hover:shadow-brand-500/20"
       />
       
+      {/* Progress Bar for Continue Watching */}
+      {content.progress !== undefined && content.progress > 0 && (
+         <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700 z-10">
+            <div 
+               className="h-full bg-red-600"
+               style={{ width: `${Math.min(content.progress, 100)}%` }}
+            />
+         </div>
+      )}
+      
       {/* Hover Overlay */}
-      <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg flex flex-col justify-end p-4">
+      <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
         <div className="flex gap-2 mb-3 relative">
           <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center hover:bg-brand-400 transition-colors">
             <Play fill="black" size={14} className="ml-1" />

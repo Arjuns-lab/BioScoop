@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, ArrowLeft, Download, Check, Loader2 } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, ArrowLeft, Download, Check, Loader2, FastForward, WifiOff, RotateCw, Monitor, Scan, Settings, FolderCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Hls from 'hls.js';
 import { dataService } from '../services/dataService';
@@ -17,7 +17,7 @@ interface VideoPlayerProps {
   subTitle?: string;
   poster?: string;
   chapters?: Chapter[];
-  contentId?: string; // Add contentId to link downloads
+  contentId?: string;
 }
 
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster, chapters, contentId }) => {
@@ -26,164 +26,218 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
   const hlsRef = useRef<Hls | null>(null);
   
   const controlsTimeoutRef = useRef<number | null>(null);
-  const downloadTimeoutRef = useRef<number | null>(null);
-  const resetTimeoutRef = useRef<number | null>(null);
   const downloadIntervalRef = useRef<number | null>(null);
+  const progressSaveRef = useRef<number | null>(null);
+
   const navigate = useNavigate();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [resumed, setResumed] = useState(false);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [isRotated, setIsRotated] = useState(false);
+  const [showToast, setShowToast] = useState('');
   
-  // Quality & Download States
+  // Screen Modes: contain (Fit), cover (Zoom), fill (Stretch)
+  const [screenMode, setScreenMode] = useState<'contain' | 'cover' | 'fill'>('contain');
+  
+  // Quality
   const [playbackQuality, setPlaybackQuality] = useState('Auto');
   const [availableQualities, setAvailableQualities] = useState<string[]>(['Auto']);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   
+  // Download State
   const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'success'>('idle');
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [estimatedSize, setEstimatedSize] = useState('0 MB');
 
   // Check download status on mount
   useEffect(() => {
     if (contentId && dataService.isDownloaded(contentId)) {
        setDownloadStatus('success');
+       setIsOfflineMode(true);
     }
   }, [contentId]);
 
-  // Initialize HLS
+  // HLS Setup
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const isHlsSource = src.endsWith('.m3u8');
+    // Reset state
+    setAvailableQualities(['Auto']);
+    setPlaybackQuality('Auto');
 
-    // Reset previous HLS instance if exists
-    if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-    }
+    if (Hls.isSupported() && (src.endsWith('.m3u8') || !src.endsWith('.mp4'))) {
+      const hls = new Hls({
+         capLevelToPlayerSize: true,
+         autoStartLoad: true,
+      });
+      
+      hlsRef.current = hls;
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      
+      hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+        const levels = data.levels.map((l: any) => `${l.height}p`);
+        // Filter unique and sort (cast to string[] to satisfy TS)
+        const unique = Array.from(new Set(levels as string[])).sort((a, b) => parseInt(b) - parseInt(a));
+        setAvailableQualities(['Auto', ...unique]);
+        // Default to Auto (-1)
+        hls.currentLevel = -1; 
+        
+        if (!resumed) video.play().catch(() => {});
+      });
 
-    if (Hls.isSupported() && isHlsSource) {
-        const hls = new Hls({
-            enableWorker: true,
-            lowLatencyMode: true,
-        });
-        hlsRef.current = hls;
-
-        hls.loadSource(src);
-        hls.attachMedia(video);
-
-        hls.on(Hls.Events.MANIFEST_PARSED, (event, data: any) => {
-            // Extract qualities
-            const levels = data.levels.map((l: any) => `${l.height}p`);
-            // Remove duplicates and sort
-            const uniqueLevels = Array.from(new Set(levels)).sort((a: any, b: any) => parseInt(b) - parseInt(a));
-            setAvailableQualities(['Auto', ...(uniqueLevels as string[])]);
-            
-            // Ensure we start in Auto mode for adaptive streaming
-            hls.currentLevel = -1;
-            setPlaybackQuality('Auto');
-
-            video.play().catch(() => {
-                // Autoplay might be blocked
-                setIsPlaying(false);
-            });
-            setIsPlaying(true);
-        });
-
-    } else if (video.canPlayType('application/vnd.apple.mpegurl') && isHlsSource) {
-        // Native HLS support (Safari)
-        video.src = src;
-        video.addEventListener('loadedmetadata', () => {
-            setDuration(video.duration);
-            video.play().catch(() => setIsPlaying(false));
-            setIsPlaying(true);
-        });
+      hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+              switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
+                      hls.startLoad();
+                      break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                      hls.recoverMediaError();
+                      break;
+                  default:
+                      hls.destroy();
+                      break;
+              }
+          }
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS (Safari)
+      video.src = src;
+      video.addEventListener('loadedmetadata', () => {
+         if(!resumed) video.play().catch(() => {});
+      });
     } else {
-        // Direct file playback (MP4)
-        video.src = src;
-        video.addEventListener('loadedmetadata', () => {
-             setDuration(video.duration);
-        });
-        // Basic fake qualities for MP4
-        setAvailableQualities(['Auto', '1080p', '720p', '480p']);
+      // Direct MP4
+      video.src = src;
+      video.addEventListener('loadedmetadata', () => {
+         if(!resumed) video.play().catch(() => {});
+      });
     }
 
     return () => {
-        if (hlsRef.current) {
-            hlsRef.current.destroy();
-        }
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+      }
     };
   }, [src]);
 
-  const handlePlayPause = () => {
+  // Progress Saving for Continue Watching
+  useEffect(() => {
+     if (!contentId || !videoRef.current) return;
+     
+     const saveProgress = () => {
+         const vid = videoRef.current;
+         if (vid && !vid.paused && vid.currentTime > 5) {
+             dataService.updateWatchProgress(contentId, vid.currentTime, vid.duration);
+         }
+     };
+
+     // Throttle saves to every 5 seconds
+     progressSaveRef.current = window.setInterval(saveProgress, 5000);
+
+     return () => {
+         if (progressSaveRef.current) clearInterval(progressSaveRef.current);
+         if (videoRef.current && videoRef.current.currentTime > 5) {
+            dataService.updateWatchProgress(contentId, videoRef.current.currentTime, videoRef.current.duration);
+         }
+     };
+  }, [contentId]);
+
+  // Handle Controls Visibility
+  const handleMouseMove = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      window.clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = window.setTimeout(() => {
+      if (isPlaying) setShowControls(false);
+    }, 3000);
+  };
+
+  // Resume Logic
+  const handleMetadataLoaded = () => {
+      const video = videoRef.current;
+      if (!video) return;
+      
+      setDuration(video.duration);
+
+      // Estimate File Size for Download based on duration
+      if (video.duration) {
+         const hours = video.duration / 3600;
+         setEstimatedSize(`${(hours * 1.5).toFixed(1)} GB`); // Approx 1.5GB per hour for 1080p
+      }
+
+      // Check for saved position
+      if (contentId && !resumed) {
+          const savedTime = dataService.getWatchPosition(contentId);
+          if (savedTime > 10 && savedTime < video.duration - 60) {
+             const userWantsResume = true; // Could prompt user here, but auto-resume is standard OTT
+             if (userWantsResume) {
+                 video.currentTime = savedTime;
+                 setResumed(true);
+                 // Toast or indication could go here
+             }
+          }
+      }
+  };
+
+  const togglePlay = () => {
     if (videoRef.current) {
-      if (isPlaying) videoRef.current.pause();
-      else videoRef.current.play();
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
       setIsPlaying(!isPlaying);
     }
   };
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-        const d = videoRef.current.duration;
-        const t = videoRef.current.currentTime;
-        
-        // Ensure duration is set if it wasn't caught by loadedmetadata (sometimes happens with HLS)
-        if (d && d !== duration && isFinite(d)) {
-            setDuration(d);
-        }
-
-        // Avoid division by zero
-        const safeDuration = d || 1; 
-        const progress = (t / safeDuration) * 100;
-        setProgress(progress);
+      const current = videoRef.current.currentTime;
+      setCurrentTime(current);
+      setProgress((current / videoRef.current.duration) * 100);
     }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const manualChange = Number(e.target.value);
+    const time = (parseFloat(e.target.value) / 100) * duration;
     if (videoRef.current) {
-      const duration = videoRef.current.duration || 0;
-      videoRef.current.currentTime = (duration / 100) * manualChange;
-      setProgress(manualChange);
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+      setProgress(parseFloat(e.target.value));
     }
   };
 
-  const handleChapterSeek = (startTime: number) => {
-     if (videoRef.current) {
-         videoRef.current.currentTime = startTime;
-         // Optimistic update
-         if(duration > 0) {
-             setProgress((startTime / duration) * 100);
-         }
-         if (!isPlaying) {
-             videoRef.current.play();
-             setIsPlaying(true);
-         }
-     }
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setVolume(val);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      setIsMuted(val === 0);
+    }
   };
 
-  const changeQuality = (quality: string) => {
-      setPlaybackQuality(quality);
-      setShowQualityMenu(false);
-
-      if (hlsRef.current) {
-          if (quality === 'Auto') {
-              // Enable adaptive bitrate by setting currentLevel to -1
-              hlsRef.current.currentLevel = -1; 
-          } else {
-              const levelIndex = hlsRef.current.levels.findIndex((l: any) => `${l.height}p` === quality);
-              if (levelIndex !== -1) {
-                  hlsRef.current.currentLevel = levelIndex;
-              }
-          }
+  const toggleMute = () => {
+    if (videoRef.current) {
+      const newMuted = !isMuted;
+      setIsMuted(newMuted);
+      videoRef.current.muted = newMuted;
+      if (!newMuted) {
+          videoRef.current.volume = volume || 1;
       }
+    }
   };
 
   const toggleFullscreen = () => {
@@ -196,335 +250,346 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
     }
   };
 
-  const handleMouseMove = () => {
-    setShowControls(true);
-    if (controlsTimeoutRef.current) window.clearTimeout(controlsTimeoutRef.current);
-    controlsTimeoutRef.current = window.setTimeout(() => {
-      if (isPlaying && !showQualityMenu && !showDownloadMenu) setShowControls(false);
-    }, 3000);
-  };
-
-  const getEstimatedSize = (qualityLabel: string) => {
-      if (!duration || !isFinite(duration)) return 'Unknown size';
-      
-      // Approximate bitrates (Mbps) for OTT content
-      let bitrateMbps = 2.0;
-      if (qualityLabel.includes('1080p')) bitrateMbps = 4.5;
-      else if (qualityLabel.includes('720p')) bitrateMbps = 2.2;
-      else if (qualityLabel.includes('480p')) bitrateMbps = 1.0;
-      
-      // Size in Megabytes = (Mbps * duration_seconds) / 8
-      const sizeMB = (bitrateMbps * duration) / 8;
-      
-      if (sizeMB > 1024) {
-          return `${(sizeMB / 1024).toFixed(1)} GB`;
-      }
-      return `${Math.round(sizeMB)} MB`;
-  };
-
-  const handleDownload = (quality: string) => {
-    setShowDownloadMenu(false);
-    setDownloadStatus('downloading');
-    setDownloadProgress(0);
-    
-    // Clear any pending resets/downloads
-    if (downloadTimeoutRef.current) window.clearTimeout(downloadTimeoutRef.current);
-    if (resetTimeoutRef.current) window.clearTimeout(resetTimeoutRef.current);
-    if (downloadIntervalRef.current) window.clearInterval(downloadIntervalRef.current);
-
-    // Simulate download progress
-    let currentProgress = 0;
-    downloadIntervalRef.current = window.setInterval(() => {
-        // Random increment between 2% and 8%
-        currentProgress += Math.random() * 6 + 2;
-        
-        if (currentProgress >= 100) {
-            currentProgress = 100;
-            if (downloadIntervalRef.current) window.clearInterval(downloadIntervalRef.current);
-            setDownloadProgress(100);
-            setDownloadStatus('success');
-            
-            // Save to Downloads
-            if(contentId) {
-              dataService.addDownload({
-                 contentId: contentId,
-                 title: title,
-                 posterUrl: poster || '',
-                 quality: quality,
-                 size: getEstimatedSize(quality),
-                 downloadedAt: new Date().toISOString(),
-                 type: subTitle ? 'series' : 'movie'
-              });
-            }
-
-            // Auto reset to idle after 3 seconds of success message
-            resetTimeoutRef.current = window.setTimeout(() => {
-                setDownloadStatus('idle');
-            }, 3000);
+  const changeQuality = (quality: string) => {
+    setPlaybackQuality(quality);
+    if (hlsRef.current) {
+        if (quality === 'Auto') {
+            hlsRef.current.currentLevel = -1;
         } else {
-            setDownloadProgress(currentProgress);
+            const levels = hlsRef.current.levels;
+            const levelIndex = levels.findIndex((l: any) => `${l.height}p` === quality);
+            if (levelIndex !== -1) {
+                hlsRef.current.currentLevel = levelIndex;
+            }
         }
-    }, 200);
+    }
+    setShowQualityMenu(false);
   };
 
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-        if(e.code === 'Space') {
-            e.preventDefault(); // Prevent scrolling
-            handlePlayPause();
-        }
-    };
-    window.addEventListener('keydown', handleKeyPress);
-    return () => {
-        window.removeEventListener('keydown', handleKeyPress);
-    };
-  }, [isPlaying]);
+  const handleDownloadSelect = (quality: string) => {
+      setShowDownloadMenu(false);
+      setDownloadStatus('downloading');
+      setDownloadProgress(0);
 
-  // Separate useEffect for cleanup of timers to prevent clearing on re-renders
-  useEffect(() => {
-      return () => {
-        if (controlsTimeoutRef.current) window.clearTimeout(controlsTimeoutRef.current);
-        if (downloadTimeoutRef.current) window.clearTimeout(downloadTimeoutRef.current);
-        if (resetTimeoutRef.current) window.clearTimeout(resetTimeoutRef.current);
-        if (downloadIntervalRef.current) window.clearInterval(downloadIntervalRef.current);
-      };
-  }, []);
+      if (downloadIntervalRef.current) clearInterval(downloadIntervalRef.current);
 
-  const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds) || !isFinite(seconds)) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      // Simulate download with variable speed
+      downloadIntervalRef.current = window.setInterval(() => {
+          setDownloadProgress(prev => {
+              const increment = Math.random() * 8 + 2; // Random speed
+              const next = prev + increment;
+              if (next >= 100) {
+                  clearInterval(downloadIntervalRef.current!);
+                  finishDownload(quality);
+                  return 100;
+              }
+              return next;
+          });
+      }, 500);
+  };
+
+  const finishDownload = (quality: string) => {
+      setDownloadStatus('success');
+      setIsOfflineMode(true);
+      
+      // 1. Persist metadata to app storage
+      if (contentId) {
+          dataService.addDownload({
+              contentId: contentId,
+              title: title,
+              posterUrl: poster || '',
+              quality: quality,
+              size: quality === '1080p' ? '2.1 GB' : quality === '720p' ? '1.2 GB' : '500 MB',
+              downloadedAt: new Date().toISOString(),
+              type: 'movie'
+          });
+      }
+
+      // 2. Trigger Real Download if applicable
+      if (src && !src.endsWith('.m3u8')) {
+          dataService.triggerBrowserDownload(src, title);
+          setShowToast('Saved to device Download folder');
+          setTimeout(() => setShowToast(''), 4000);
+      } else {
+          setShowToast('Saved to App Offline Storage');
+          setTimeout(() => setShowToast(''), 4000);
+      }
+      
+      // Note: We do NOT reset to idle here, to persist the 'Downloaded' state for this session/content
+  };
+
+  const handleSkipIntro = () => {
+      if (videoRef.current) {
+          videoRef.current.currentTime = Math.min(videoRef.current.currentTime + 85, duration);
+      }
+  };
+
+  const handleChapterSeek = (time: number) => {
+      if (videoRef.current) videoRef.current.currentTime = time;
+  };
+
+  const handleScreenModeToggle = () => {
+      const modes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
+      const nextIndex = (modes.indexOf(screenMode) + 1) % modes.length;
+      setScreenMode(modes[nextIndex]);
+  };
+
+  const handleRotate = () => {
+      setIsRotated(!isRotated);
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Calculate generic file sizes based on duration
+  const getFileSize = (q: string) => {
+      if (!duration) return 'Unknown';
+      const hours = duration / 3600;
+      if (q === '1080p') return `${(hours * 2.5).toFixed(1)} GB`;
+      if (q === '720p') return `${(hours * 1.2).toFixed(1)} GB`;
+      return `${(hours * 0.5).toFixed(1)} GB`;
   };
 
   return (
     <div 
-      ref={containerRef}
-      onMouseMove={handleMouseMove}
-      className="relative w-full h-screen bg-black overflow-hidden group font-sans select-none"
+        ref={containerRef} 
+        className="relative bg-black w-full h-screen overflow-hidden group select-none flex items-center justify-center"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => isPlaying && setShowControls(false)}
+        onTouchStart={handleMouseMove}
     >
       <video
         ref={videoRef}
-        poster={poster}
-        className="w-full h-full object-contain"
+        className={`w-full h-full transition-all duration-300 ${isRotated ? 'rotate-90 scale-[1.3]' : ''}`}
+        style={{ objectFit: screenMode }}
         onTimeUpdate={handleTimeUpdate}
-        onClick={handlePlayPause}
         onEnded={() => setIsPlaying(false)}
+        onLoadedMetadata={handleMetadataLoaded}
         playsInline
       />
 
-      {/* Top Header */}
-      <div className={`absolute top-0 left-0 right-0 p-6 bg-gradient-to-b from-black/80 to-transparent transition-opacity duration-300 z-20 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-        <button onClick={() => navigate(-1)} className="text-white hover:text-brand-500 mb-4 transition-colors">
-          <ArrowLeft size={32} />
-        </button>
-        <h2 className="text-2xl font-bold text-white drop-shadow-md">{title}</h2>
-        {subTitle && <p className="text-gray-300 drop-shadow-md">{subTitle}</p>}
-      </div>
-
-      {/* Center Play Button Overlay */}
-      {!isPlaying && (
-         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-            <div className="w-24 h-24 bg-black/40 rounded-full flex items-center justify-center backdrop-blur-sm border border-white/10 shadow-2xl animate-pulse">
-               <Play size={48} fill="white" className="ml-2 text-white" />
-            </div>
+      {/* Offline Watermark */}
+      {isOfflineMode && (
+         <div className="absolute top-6 right-6 flex items-center gap-2 bg-black/60 px-3 py-1 rounded-full text-xs text-green-400 border border-green-500/30 z-0 pointer-events-none">
+             <WifiOff size={14} />
+             <span>Offline Mode</span>
          </div>
       )}
 
-      {/* Controls Container */}
-      <div className={`absolute bottom-0 left-0 right-0 px-6 pb-8 pt-24 bg-gradient-to-t from-black/95 via-black/70 to-transparent transition-opacity duration-300 z-20 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-        
-        {/* Progress Bar & Chapters */}
-        <div className="flex items-center gap-4 mb-4 group/progress relative">
-           <span className="text-xs font-medium text-gray-300 w-10 text-right tabular-nums">{formatTime(videoRef.current?.currentTime || 0)}</span>
-          
-          <div className="relative w-full h-1 group-hover/progress:h-2 transition-all bg-gray-600/50 rounded-lg cursor-pointer">
-              {/* Buffer Bar (Simulated) */}
-              <div className="absolute top-0 left-0 h-full bg-gray-400/30 rounded-lg w-[60%]"></div>
-              
-              {/* Play Progress */}
-              <div 
-                className="absolute top-0 left-0 h-full bg-brand-500 rounded-lg relative"
-                style={{ width: `${progress}%` }}
-              >
-                 <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover/progress:opacity-100 shadow-lg transform scale-0 group-hover/progress:scale-100 transition-all z-20"></div>
-              </div>
-
-              {/* Chapter Markers */}
-              {chapters && duration > 0 && chapters.map((chapter) => {
-                  const position = (chapter.startTime / duration) * 100;
-                  if (position < 0 || position > 100) return null;
-                  return (
-                      <div 
-                        key={chapter.id}
-                        className="absolute top-0 bottom-0 w-1 bg-white/50 hover:bg-white z-20 hover:scale-x-150 transition-all group/marker"
-                        style={{ left: `${position}%` }}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleChapterSeek(chapter.startTime);
-                        }}
-                      >
-                         <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-black/90 text-white text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/marker:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-white/10 shadow-xl">
-                            {chapter.title}
-                         </div>
-                      </div>
-                  );
-              })}
-
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={progress}
-                onChange={handleSeek}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
+      {/* Download Toast Notification */}
+      {showToast && (
+          <div className="absolute top-20 right-1/2 translate-x-1/2 z-50 bg-brand-600 text-white px-4 py-2 rounded-lg shadow-xl animate-in slide-in-from-top-4 fade-in flex items-center gap-2">
+              <FolderCheck size={18} />
+              <span className="text-sm font-bold">{showToast}</span>
           </div>
-           <span className="text-xs font-medium text-gray-300 w-10 tabular-nums">{formatTime(duration)}</span>
-        </div>
+      )}
 
-        {/* Buttons Row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <button onClick={handlePlayPause} className="text-white hover:text-brand-500 transition-transform active:scale-90">
-              {isPlaying ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" />}
-            </button>
-            
-            <button onClick={() => videoRef.current && (videoRef.current.currentTime -= 10)} className="text-gray-300 hover:text-white flex flex-col items-center group/skip">
-               <span className="text-xl leading-none -mb-1 group-hover/skip:-translate-x-1 transition-transform">«</span>
-               <span className="text-[10px] font-bold">10s</span>
-            </button>
-            <button onClick={() => videoRef.current && (videoRef.current.currentTime += 10)} className="text-gray-300 hover:text-white flex flex-col items-center group/skip">
-               <span className="text-xl leading-none -mb-1 group-hover/skip:translate-x-1 transition-transform">»</span>
-               <span className="text-[10px] font-bold">10s</span>
-            </button>
+      {/* Skip Intro Button */}
+      {currentTime > 0 && currentTime < 35 && (
+          <button 
+             onClick={handleSkipIntro}
+             className="absolute bottom-24 right-8 z-20 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white px-6 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all animate-in fade-in slide-in-from-bottom-4"
+          >
+             Skip Intro <FastForward size={16} />
+          </button>
+      )}
 
-            <div className="flex items-center gap-2 group/vol">
-              <button onClick={() => setIsMuted(!isMuted)} className="text-white hover:text-gray-300">
-                {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
-              </button>
-              <div className="w-0 overflow-hidden group-hover/vol:w-24 transition-all duration-300 flex items-center">
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={volume}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      setVolume(v);
-                      if(videoRef.current) videoRef.current.volume = v;
-                    }}
-                    className="w-24 h-1 bg-gray-500 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand-500"
-                  />
-              </div>
+      {/* Controls Overlay */}
+      <div 
+        className={`absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/60 transition-opacity duration-300 flex flex-col justify-between z-10 ${
+          showControls ? 'opacity-100' : 'opacity-0 cursor-none'
+        }`}
+      >
+        {/* Top Bar */}
+        <div className="p-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => navigate(-1)} className="text-white hover:text-brand-500 transition-colors">
+              <ArrowLeft size={28} />
+            </button>
+            <div>
+              <h1 className="text-white font-bold text-lg leading-tight md:text-xl">{title}</h1>
+              {subTitle && <p className="text-gray-400 text-xs md:text-sm">{subTitle}</p>}
             </div>
           </div>
-
+          
           <div className="flex items-center gap-4">
-             {/* Download Button */}
-             <div className="relative">
-                <button 
-                  onClick={() => {
-                     if(downloadStatus === 'idle') setShowDownloadMenu(!showDownloadMenu);
-                     setShowQualityMenu(false);
-                  }} 
-                  className={`
-                    flex items-center gap-2 transition-all duration-300 rounded-full p-2 relative overflow-hidden group
-                    ${downloadStatus === 'idle' ? 'hover:bg-white/10 text-white hover:text-brand-500' : ''}
-                    ${downloadStatus === 'downloading' ? 'text-brand-400 pr-6 pl-3 border border-brand-500/30 bg-black/50 cursor-wait' : ''}
-                    ${downloadStatus === 'success' ? 'bg-green-500/20 text-green-400 pr-6 pl-3 cursor-default border border-green-500/30' : ''}
-                  `}
-                  title={downloadStatus === 'idle' ? "Download" : downloadStatus}
-                  disabled={downloadStatus === 'success'}
-                >
-                    {downloadStatus === 'downloading' && (
-                       <>
-                        {/* Background Tint Progress */}
-                        <div 
-                            className="absolute left-0 top-0 bottom-0 bg-brand-600/10 transition-all duration-200 ease-linear"
-                            style={{ width: `${downloadProgress}%` }}
-                        />
-                        {/* Bottom Line Progress */}
-                         <div 
-                            className="absolute left-0 bottom-0 h-0.5 bg-brand-500 transition-all duration-200 ease-linear shadow-[0_0_10px_rgba(118,82,214,0.5)]"
-                            style={{ width: `${downloadProgress}%` }}
-                        />
-                       </>
-                    )}
+              {/* Screen Rotation */}
+              <button onClick={handleRotate} className="text-gray-300 hover:text-white hidden md:block" title="Rotate Screen">
+                 <RotateCw size={22} className={isRotated ? 'text-brand-500' : ''} />
+              </button>
 
-                    {downloadStatus === 'idle' && <Download size={24} className="relative z-10" />}
-                    
-                    {downloadStatus === 'downloading' && (
-                        <div className="relative z-10 flex items-center gap-2 min-w-[140px]">
-                            <Loader2 size={18} className="animate-spin text-brand-500" />
-                            <span className="text-sm font-bold text-white">Downloading...</span>
-                            <span className="text-xs font-mono text-brand-300 ml-auto tabular-nums">{Math.round(downloadProgress)}%</span>
-                        </div>
-                    )}
-                    
-                    {downloadStatus === 'success' && (
-                        <div className="relative z-10 flex items-center gap-2 min-w-[100px]">
-                            <Check size={18} />
-                            <span className="text-sm font-bold">Success</span>
-                        </div>
-                    )}
-                </button>
-                
-                {showDownloadMenu && downloadStatus === 'idle' && (
-                    <div className="absolute bottom-14 right-0 bg-black/90 border border-gray-700 rounded-lg overflow-hidden min-w-[200px] z-30 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2">
-                        <div className="px-4 py-3 bg-white/5 border-b border-white/10 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                            <Download size={12} /> Select Download Quality
-                        </div>
-                        {[
-                            { label: '1080p' }, 
-                            { label: '720p' }, 
-                            { label: '480p' }
-                        ].map((opt) => (
-                            <button
-                                key={opt.label}
-                                onClick={() => handleDownload(opt.label)}
-                                className="w-full text-left px-4 py-3 text-sm text-gray-200 hover:bg-brand-600 hover:text-white flex justify-between items-center transition-colors group"
-                            >
-                                <span className="font-medium">{opt.label}</span>
-                                <span className="text-[10px] opacity-60 group-hover:opacity-100 bg-white/10 px-1.5 py-0.5 rounded">
-                                    {getEstimatedSize(opt.label)}
-                                </span>
-                            </button>
-                        ))}
+              {/* Screen Mode */}
+              <button onClick={handleScreenModeToggle} className="text-gray-300 hover:text-white" title={`Screen Mode: ${screenMode}`}>
+                 {screenMode === 'contain' && <Monitor size={22} />}
+                 {screenMode === 'cover' && <Scan size={22} />}
+                 {screenMode === 'fill' && <Maximize size={22} />}
+              </button>
+
+              {/* Quality Settings */}
+              <div className="relative">
+                  <button 
+                     onClick={() => setShowQualityMenu(!showQualityMenu)}
+                     className="bg-white/10 hover:bg-white/20 px-3 py-1 rounded-md text-sm font-bold text-white transition-colors border border-white/10 flex items-center gap-2"
+                  >
+                      <Settings size={16} /> {playbackQuality}
+                  </button>
+                  {showQualityMenu && (
+                      <div className="absolute top-full right-0 mt-2 bg-dark-900 border border-gray-700 rounded-lg overflow-hidden shadow-xl min-w-[120px]">
+                          {availableQualities.map(q => (
+                              <button
+                                  key={q}
+                                  onClick={() => changeQuality(q)}
+                                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors ${playbackQuality === q ? 'text-brand-500 font-bold' : 'text-gray-300'}`}
+                              >
+                                  {q}
+                              </button>
+                          ))}
+                      </div>
+                  )}
+              </div>
+          </div>
+        </div>
+
+        {/* Center Play Button */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {!isPlaying && (
+            <div className="bg-black/50 p-6 rounded-full border-2 border-white/20 backdrop-blur-sm animate-in zoom-in duration-300">
+               <Play size={48} fill="white" className="ml-2" />
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Controls */}
+        <div className="p-6 space-y-4 bg-gradient-to-t from-black via-black/80 to-transparent">
+          {/* Timeline & Chapters */}
+          <div className="relative group/timeline py-2">
+             {/* Chapter Markers */}
+             {chapters && duration > 0 && chapters.map((chapter) => (
+                 <div 
+                    key={chapter.id}
+                    className="absolute top-1/2 -translate-y-1/2 w-1 h-3 bg-brand-400 hover:h-5 hover:w-1.5 transition-all z-20 cursor-pointer"
+                    style={{ left: `${(chapter.startTime / duration) * 100}%` }}
+                    onClick={(e) => { e.stopPropagation(); handleChapterSeek(chapter.startTime); }}
+                    title={chapter.title}
+                 >
+                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-bold px-2 py-1 rounded opacity-0 group-hover/timeline:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                       {chapter.title}
                     </div>
-                )}
-             </div>
+                 </div>
+             ))}
 
-             {/* Playback Quality Selector */}
-             <div className="relative">
-                <button 
-                  onClick={() => {
-                     setShowQualityMenu(!showQualityMenu);
-                     setShowDownloadMenu(false);
-                  }}
-                  className="text-white hover:text-brand-500 font-bold text-sm px-2 py-1 rounded hover:bg-white/10 transition-all"
-                >
-                   {playbackQuality}
+             <input
+               type="range"
+               min="0"
+               max="100"
+               value={progress}
+               onChange={handleSeek}
+               className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500 hover:h-2 transition-all"
+               style={{ backgroundSize: `${progress}% 100%` }}
+             />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <button onClick={togglePlay} className="text-white hover:text-brand-500 transition-colors">
+                {isPlaying ? <Pause size={32} fill="white" /> : <Play size={32} fill="white" />}
+              </button>
+
+              <div className="flex items-center gap-2 group/vol">
+                <button onClick={toggleMute} className="text-white hover:text-brand-500">
+                  {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
                 </button>
-                {showQualityMenu && (
-                   <div className="absolute bottom-14 right-0 bg-black/90 border border-gray-700 rounded-lg min-w-[100px] flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-2 z-30 max-h-64 overflow-y-auto no-scrollbar">
-                      {availableQualities.map(q => (
-                         <button 
-                           key={q} 
-                           onClick={() => changeQuality(q)}
-                           className={`text-left text-sm px-4 py-2 hover:bg-brand-600 hover:text-white flex justify-between items-center ${playbackQuality === q ? 'text-brand-500 font-bold' : 'text-gray-300'}`}
-                         >
-                            {q} {playbackQuality === q && <Check size={14} />}
-                         </button>
-                      ))}
-                   </div>
-                )}
-             </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="w-0 overflow-hidden group-hover/vol:w-24 transition-all duration-300 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                />
+              </div>
 
-            <button onClick={toggleFullscreen} className="text-white hover:text-brand-500 p-2 rounded-full hover:bg-white/10 transition-colors">
-              {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
-            </button>
+              <div className="text-sm font-medium text-gray-300 tracking-wide font-mono">
+                {formatTime(currentTime)} <span className="text-gray-500">/</span> {formatTime(duration)}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6">
+               {/* Download Button */}
+               <div className="relative">
+                  <button 
+                     onClick={() => {
+                        if (downloadStatus === 'idle') setShowDownloadMenu(!showDownloadMenu);
+                     }}
+                     disabled={downloadStatus !== 'idle'}
+                     className={`relative flex items-center gap-3 px-5 py-2.5 rounded-full font-bold transition-all overflow-hidden ${
+                         downloadStatus === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/50 cursor-default' : 
+                         downloadStatus === 'downloading' ? 'bg-gray-800 text-white border border-gray-600 cursor-wait' :
+                         'bg-gray-800/80 hover:bg-gray-700 text-white border border-gray-600 hover:border-white'
+                     }`}
+                  >
+                     {/* Progress Bar Background */}
+                     {downloadStatus === 'downloading' && (
+                         <div className="absolute inset-0 bg-brand-900/50 z-0">
+                            <div 
+                               className="h-full bg-brand-600/30 transition-all duration-300"
+                               style={{ width: `${downloadProgress}%` }}
+                            />
+                            {/* Bottom Line Progress */}
+                            <div className="absolute bottom-0 left-0 h-[3px] bg-brand-500 shadow-[0_0_10px_rgba(118,82,214,0.8)] transition-all duration-300" 
+                                 style={{ width: `${downloadProgress}%` }} 
+                            />
+                         </div>
+                     )}
+
+                     <div className="relative z-10 flex items-center gap-2">
+                        {downloadStatus === 'downloading' ? (
+                            <>
+                              <Loader2 size={18} className="animate-spin text-brand-400" />
+                              <span className="text-sm">Downloading... {Math.round(downloadProgress)}%</span>
+                            </>
+                        ) : downloadStatus === 'success' ? (
+                            <>
+                              <Check size={18} />
+                              <span className="text-sm">Downloaded</span>
+                            </>
+                        ) : (
+                            <>
+                              <Download size={18} />
+                              <span className="text-sm hidden md:inline">Download</span>
+                            </>
+                        )}
+                     </div>
+                  </button>
+
+                  {/* Quality Dropdown for Download */}
+                  {showDownloadMenu && (
+                      <div className="absolute bottom-full right-0 mb-2 bg-dark-900 border border-gray-700 rounded-xl overflow-hidden shadow-2xl min-w-[180px] animate-in slide-in-from-bottom-2 fade-in">
+                          <div className="px-4 py-3 bg-gray-950/50 border-b border-gray-800">
+                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Select Quality</p>
+                          </div>
+                          {['1080p', '720p', '480p'].map(q => (
+                              <button
+                                  key={q}
+                                  onClick={() => handleDownloadSelect(q)}
+                                  className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors border-b border-gray-800/50 last:border-0"
+                              >
+                                  <span className="font-medium">{q}</span>
+                                  <span className="text-xs text-gray-500">{getFileSize(q)}</span>
+                              </button>
+                          ))}
+                      </div>
+                  )}
+               </div>
+
+              <button onClick={toggleFullscreen} className="text-white hover:text-brand-500 transition-colors">
+                {isFullscreen ? <Minimize size={28} /> : <Maximize size={28} />}
+              </button>
+            </div>
           </div>
         </div>
       </div>

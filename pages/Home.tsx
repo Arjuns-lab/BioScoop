@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import HeroSlider from '../components/HeroSlider';
@@ -12,6 +13,8 @@ interface HomeProps {
 
 const Home: React.FC<HomeProps> = ({ user, logout }) => {
   const [trending, setTrending] = useState<Content[]>([]);
+  const [continueWatching, setContinueWatching] = useState<Content[]>([]);
+  const [watchlist, setWatchlist] = useState<Content[]>([]);
   const [teluguMovies, setTeluguMovies] = useState<Content[]>([]);
   const [hindiMovies, setHindiMovies] = useState<Content[]>([]);
   const [action, setAction] = useState<Content[]>([]);
@@ -19,10 +22,15 @@ const Home: React.FC<HomeProps> = ({ user, logout }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const allContent = await dataService.getAllContent();
-      const trend = await dataService.getTrending();
-      const tel = await dataService.getByLanguage('Telugu');
-      const hin = await dataService.getByLanguage('Hindi');
+      // Parallel data fetching for efficiency
+      const [allContent, trend, tel, hin, cw, wl] = await Promise.all([
+         dataService.getAllContent(),
+         dataService.getTrending(),
+         dataService.getByLanguage('Telugu'),
+         dataService.getByLanguage('Hindi'),
+         dataService.getContinueWatchingContent(),
+         dataService.getWatchlistContent()
+      ]);
       
       const actionContent = allContent.filter(c => c.genres.includes('Action'));
 
@@ -30,11 +38,13 @@ const Home: React.FC<HomeProps> = ({ user, logout }) => {
       setTeluguMovies(tel);
       setHindiMovies(hin);
       setAction(actionContent);
+      setContinueWatching(cw);
+      setWatchlist(wl);
       setIsLoading(false);
     };
 
     fetchData();
-  }, []);
+  }, [user]); // Re-fetch if user changes (e.g. login/logout)
 
   if (isLoading) {
      return <div className="h-screen w-full flex items-center justify-center bg-dark-950 text-brand-500 text-2xl font-bold">Loading BioScoop...</div>;
@@ -46,6 +56,14 @@ const Home: React.FC<HomeProps> = ({ user, logout }) => {
       <HeroSlider content={trending.slice(0, 5)} />
       
       <div className="-mt-32 relative z-10 space-y-4">
+        {continueWatching.length > 0 && (
+           <ContentRow title="Continue Watching" content={continueWatching} />
+        )}
+
+        {watchlist.length > 0 && (
+           <ContentRow title="My List" content={watchlist} />
+        )}
+        
         <ContentRow title="Trending Now" content={trending} />
         <ContentRow title="Blockbuster Telugu Movies" content={teluguMovies} />
         <ContentRow title="Hit Hindi Movies" content={hindiMovies} />

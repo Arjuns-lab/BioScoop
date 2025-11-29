@@ -258,12 +258,11 @@ class DataService {
   // Auth Simulation
   async loginWithPhone(phoneNumber: string): Promise<User> {
       await delay(500);
-      // Hardcode a specific phone number as admin for testing
       const isAdmin = phoneNumber === '9999999999';
       
       const user: User = {
           id: 'u_' + phoneNumber,
-          email: '', // Empty for phone users
+          email: '',
           phoneNumber,
           name: isAdmin ? 'Admin' : `User ${phoneNumber.slice(-4)}`,
           isAdmin,
@@ -291,7 +290,6 @@ class DataService {
 
   async updateUserProfile(name: string): Promise<User | null> {
     await delay(400);
-    // Profile updates are self-service, allow non-admin
     const currentUser = this.getCurrentUser();
     if(currentUser) {
       const updated = { ...currentUser, name };
@@ -330,8 +328,67 @@ class DataService {
       const user = this.getCurrentUser();
       if (!user) return [];
       
-      const allContent = this.getContentFromStorage(); // Synchronous for this mock
+      const allContent = this.getContentFromStorage(); 
       return allContent.filter(c => user.watchlist.includes(c.id));
+  }
+
+  // Continue Watching Management
+  async updateWatchProgress(contentId: string, currentTime: number, duration: number) {
+      const user = this.getCurrentUser();
+      if (!user) return;
+
+      const progressPercent = (currentTime / duration) * 100;
+      
+      // Update local array
+      const existingIndex = user.continueWatching.findIndex(item => item.contentId === contentId);
+      
+      if (existingIndex !== -1) {
+          // Update existing
+          user.continueWatching[existingIndex] = { contentId, progress: progressPercent, duration, timestamp: currentTime };
+          // Move to front
+          const item = user.continueWatching.splice(existingIndex, 1)[0];
+          user.continueWatching.unshift(item);
+      } else {
+          // Add new
+          user.continueWatching.unshift({ contentId, progress: progressPercent, duration, timestamp: currentTime });
+      }
+
+      // Keep only last 10
+      if (user.continueWatching.length > 10) {
+          user.continueWatching = user.continueWatching.slice(0, 10);
+      }
+
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
+
+  async getContinueWatchingContent(): Promise<Content[]> {
+      const user = this.getCurrentUser();
+      if (!user || user.continueWatching.length === 0) return [];
+      
+      const allContent = this.getContentFromStorage();
+      
+      // Map continue watching items to content objects and inject progress
+      const cwContent: Content[] = [];
+      
+      for (const cwItem of user.continueWatching) {
+          const content = allContent.find(c => c.id === cwItem.contentId);
+          if (content) {
+              // Clone and add UI-specific progress property
+              cwContent.push({
+                  ...content,
+                  progress: cwItem.progress
+              });
+          }
+      }
+      
+      return cwContent;
+  }
+
+  getWatchPosition(contentId: string): number {
+      const user = this.getCurrentUser();
+      if (!user) return 0;
+      const item = user.continueWatching.find(c => c.contentId === contentId);
+      return item ? item.timestamp : 0;
   }
 
   // Admin User Management (Mock) - RESTRICTED
@@ -340,7 +397,6 @@ class DataService {
       this.ensureAdmin(); // RESTRICTED
 
       const currentUser = this.getCurrentUser();
-      // Generate some mock users
       const mockUsers: User[] = [
           { id: 'u_1', email: 'john.doe@example.com', name: 'John Doe', isAdmin: false, watchlist: [], continueWatching: [] },
           { id: 'u_2', email: 'sarah.smith@test.com', name: 'Sarah Smith', isAdmin: false, watchlist: [], continueWatching: [] },
@@ -349,7 +405,6 @@ class DataService {
           { id: 'u_5', phoneNumber: '9876543210', email: '', name: 'Mobile User', isAdmin: false, watchlist: [], continueWatching: [] },
       ];
       
-      // If current user is unique (not in mock), add them
       if (currentUser) {
          const exists = mockUsers.find(u => 
              (u.email && u.email === currentUser.email) || 
@@ -364,8 +419,6 @@ class DataService {
   async deleteUser(userId: string): Promise<void> {
       await delay(400);
       this.ensureAdmin(); // RESTRICTED
-
-      // In a real app, delete from DB. Here we just pretend.
       console.log(`User ${userId} deleted by Admin`);
   }
 
@@ -376,7 +429,6 @@ class DataService {
 
   addDownload(download: Download) {
     const current = this.getDownloadsFromStorage();
-    // Prevent duplicates for same content+quality
     const exists = current.find(d => d.contentId === download.contentId && d.quality === download.quality);
     if (!exists) {
        current.unshift(download);
@@ -390,9 +442,52 @@ class DataService {
     this.saveDownloadsToStorage(filtered);
   }
 
+  removeAllDownloads() {
+      this.saveDownloadsToStorage([]);
+  }
+
   isDownloaded(contentId: string): boolean {
     const current = this.getDownloadsFromStorage();
     return current.some(d => d.contentId === contentId);
+  }
+
+  // Trigger Real Browser Download
+  triggerBrowserDownload(url: string, filename: string) {
+      // Create a temporary anchor element
+      const a = document.createElement('a');
+      a.href = url;
+      // Sanitize filename
+      a.download = filename.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.mp4';
+      a.target = '_blank'; // Needed for cross-origin urls in some browsers
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+  }
+
+  // Storage Usage Simulation
+  getStorageUsage() {
+    const downloads = this.getDownloadsFromStorage();
+    let usedBytes = 0;
+    
+    downloads.forEach(d => {
+        // Parse "2.1 GB" or "850 MB"
+        const parts = d.size.split(' ');
+        if (parts.length === 2) {
+            const val = parseFloat(parts[0]);
+            const unit = parts[1];
+            if (unit === 'GB') usedBytes += val * 1024 * 1024 * 1024;
+            if (unit === 'MB') usedBytes += val * 1024 * 1024;
+        }
+    });
+
+    // Mock Total Space (64 GB)
+    const totalBytes = 64 * 1024 * 1024 * 1024;
+    
+    return {
+        usedGB: (usedBytes / (1024 * 1024 * 1024)).toFixed(1),
+        totalGB: 64,
+        percent: Math.min((usedBytes / totalBytes) * 100, 100)
+    };
   }
 }
 
