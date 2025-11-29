@@ -430,33 +430,41 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
                      setShowQualityMenu(false);
                   }} 
                   className={`
-                    flex items-center gap-2 transition-all duration-300 rounded-full p-2 relative overflow-hidden
+                    flex items-center gap-2 transition-all duration-300 rounded-full p-2 relative overflow-hidden group
                     ${downloadStatus === 'idle' ? 'hover:bg-white/10 text-white hover:text-brand-500' : ''}
-                    ${downloadStatus === 'downloading' ? 'text-brand-400 pr-6 pl-3 border border-brand-500/30 bg-black/50' : ''}
+                    ${downloadStatus === 'downloading' ? 'text-brand-400 pr-6 pl-3 border border-brand-500/30 bg-black/50 cursor-wait' : ''}
                     ${downloadStatus === 'success' ? 'bg-green-500/20 text-green-400 pr-6 pl-3 cursor-default border border-green-500/30' : ''}
                   `}
-                  title="Download"
-                  disabled={downloadStatus !== 'idle'}
+                  title={downloadStatus === 'idle' ? "Download" : downloadStatus}
+                  disabled={downloadStatus === 'success'}
                 >
                     {downloadStatus === 'downloading' && (
+                       <>
+                        {/* Background Tint Progress */}
                         <div 
-                            className="absolute left-0 top-0 bottom-0 bg-brand-600/20 transition-all duration-200 ease-linear"
+                            className="absolute left-0 top-0 bottom-0 bg-brand-600/10 transition-all duration-200 ease-linear"
                             style={{ width: `${downloadProgress}%` }}
                         />
+                        {/* Bottom Line Progress */}
+                         <div 
+                            className="absolute left-0 bottom-0 h-0.5 bg-brand-500 transition-all duration-200 ease-linear shadow-[0_0_10px_rgba(118,82,214,0.5)]"
+                            style={{ width: `${downloadProgress}%` }}
+                        />
+                       </>
                     )}
 
                     {downloadStatus === 'idle' && <Download size={24} className="relative z-10" />}
                     
                     {downloadStatus === 'downloading' && (
-                        <div className="relative z-10 flex items-center gap-2">
-                            <Loader2 size={18} className="animate-spin" />
-                            <span className="text-sm font-bold">Downloading...</span>
-                            <span className="text-xs opacity-80 tabular-nums w-8 text-right">{Math.round(downloadProgress)}%</span>
+                        <div className="relative z-10 flex items-center gap-2 min-w-[140px]">
+                            <Loader2 size={18} className="animate-spin text-brand-500" />
+                            <span className="text-sm font-bold text-white">Downloading...</span>
+                            <span className="text-xs font-mono text-brand-300 ml-auto tabular-nums">{Math.round(downloadProgress)}%</span>
                         </div>
                     )}
                     
                     {downloadStatus === 'success' && (
-                        <div className="relative z-10 flex items-center gap-2">
+                        <div className="relative z-10 flex items-center gap-2 min-w-[100px]">
                             <Check size={18} />
                             <span className="text-sm font-bold">Success</span>
                         </div>

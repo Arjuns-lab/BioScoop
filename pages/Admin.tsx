@@ -28,6 +28,7 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
       maintenanceMode: false,
       globalAlert: ''
   });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   
   // Upload Simulation State
   // Map of fieldName -> progress percentage (0-100)
@@ -313,11 +314,16 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
   };
 
   const handleSaveSettings = async () => {
+      setIsSavingSettings(true);
       try {
           await dataService.savePlatformSettings(platformSettings);
+          // Simulate minimal delay
+          await new Promise(r => setTimeout(r, 500));
           alert('Settings saved successfully.');
       } catch (err) {
           alert('Failed to save settings');
+      } finally {
+          setIsSavingSettings(false);
       }
   };
 
@@ -756,7 +762,7 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                                      <div className="md:col-span-8 lg:col-span-9">
                                         <h4 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                                            <Star size={14} className="text-yellow-500" /> Primary Source (Required)
+                                            <Star size={14} className="text-yellow-500" /> Primary Video URL (.mp4)
                                         </h4>
                                         {renderUploadInput(
                                             'Primary Video URL (.mp4)', 
@@ -938,9 +944,11 @@ const Admin: React.FC<AdminProps> = ({ user, onLogout }) => {
                   <div className="pt-4 border-t border-gray-800 flex justify-end">
                       <button 
                           onClick={handleSaveSettings}
-                          className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"
+                          disabled={isSavingSettings}
+                          className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-wait text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-all"
                       >
-                          <Save size={18} /> Save Changes
+                          {isSavingSettings ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                          {isSavingSettings ? 'Saving...' : 'Save Changes'}
                       </button>
                   </div>
               </div>
