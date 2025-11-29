@@ -1,6 +1,7 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import VideoPlayer from '../components/VideoPlayer';
+import VideoPlayer, { Chapter } from '../components/VideoPlayer';
 import { dataService } from '../services/dataService';
 import { Content } from '../types';
 
@@ -39,7 +40,20 @@ const PlayerPage: React.FC = () => {
   }
 
   // Fallback video if API key missing/mock data empty for video
-  if(!src) src = 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+  // Using a robust HLS test stream (Big Buck Bunny)
+  if(!src || src.includes('commondatastorage.googleapis.com')) {
+      src = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+  }
+
+  // Mock Chapters for Demo (timestamps based on Big Buck Bunny approx)
+  const mockChapters: Chapter[] = [
+      { id: '1', title: 'Intro', startTime: 0 },
+      { id: '2', title: 'The Butterfly', startTime: 45 },
+      { id: '3', title: 'The Encounter', startTime: 95 },
+      { id: '4', title: 'Revenge Planning', startTime: 250 },
+      { id: '5', title: 'The Trap', startTime: 380 },
+      { id: '6', title: 'Credits', startTime: 580 }
+  ];
 
   return (
     <VideoPlayer 
@@ -47,6 +61,8 @@ const PlayerPage: React.FC = () => {
       title={title} 
       subTitle={subTitle}
       poster={content.bannerUrl}
+      chapters={mockChapters}
+      contentId={content.id}
     />
   );
 };

@@ -1,4 +1,5 @@
-import { Content, User, Language } from '../types';
+
+import { Content, User, Language, Download, PlatformSettings } from '../types';
 
 // Initial Seed Data
 const INITIAL_CONTENT: Content[] = [
@@ -109,6 +110,8 @@ const INITIAL_CONTENT: Content[] = [
 
 const STORAGE_KEY = 'bioscoop_content_db';
 const USER_KEY = 'bioscoop_user_v1';
+const DOWNLOADS_KEY = 'bioscoop_downloads';
+const SETTINGS_KEY = 'bioscoop_platform_settings';
 
 // Helper to simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -122,6 +125,9 @@ class DataService {
     if (!localStorage.getItem(STORAGE_KEY)) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_CONTENT));
     }
+    if (!localStorage.getItem(DOWNLOADS_KEY)) {
+      localStorage.setItem(DOWNLOADS_KEY, JSON.stringify([]));
+    }
   }
 
   private getContentFromStorage(): Content[] {
@@ -133,6 +139,25 @@ class DataService {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
   }
 
+  private getDownloadsFromStorage(): Download[] {
+    const data = localStorage.getItem(DOWNLOADS_KEY);
+    return data ? JSON.parse(data) : [];
+  }
+
+  private saveDownloadsToStorage(downloads: Download[]) {
+    localStorage.setItem(DOWNLOADS_KEY, JSON.stringify(downloads));
+  }
+
+  // Security Helper: Throws error if user is not admin
+  private ensureAdmin() {
+    const user = this.getCurrentUser();
+    if (!user || !user.isAdmin) {
+       console.error("Access Denied: User is not an admin", user);
+       throw new Error("Access Denied: You do not have permission to perform this action.");
+    }
+  }
+
+  // PUBLIC READ API
   async getAllContent(): Promise<Content[]> {
     await delay(500);
     return this.getContentFromStorage();
@@ -166,9 +191,11 @@ class DataService {
     );
   }
 
-  // Admin Functions
+  // ADMIN PROTECTED WRITE API
   async addContent(content: Omit<Content, 'id' | 'createdAt'>): Promise<Content> {
     await delay(800);
+    this.ensureAdmin(); // RESTRICTED
+
     const all = this.getContentFromStorage();
     const newContent: Content = {
       ...content,
@@ -182,6 +209,8 @@ class DataService {
 
   async updateContent(content: Content): Promise<Content> {
     await delay(600);
+    this.ensureAdmin(); // RESTRICTED
+
     const all = this.getContentFromStorage();
     const index = all.findIndex(c => c.id === content.id);
     if (index !== -1) {
@@ -193,12 +222,58 @@ class DataService {
 
   async deleteContent(id: string): Promise<void> {
     await delay(500);
+    this.ensureAdmin(); // RESTRICTED
+
     const all = this.getContentFromStorage();
     const filtered = all.filter(c => c.id !== id);
     this.saveContentToStorage(filtered);
   }
 
+  // Platform Settings Management
+  async getPlatformSettings(): Promise<PlatformSettings> {
+    await delay(300);
+    const data = localStorage.getItem(SETTINGS_KEY);
+    return data ? JSON.parse(data) : { maintenanceMode: false, globalAlert: '' };
+  }
+
+  async savePlatformSettings(settings: PlatformSettings): Promise<void> {
+    await delay(500);
+    this.ensureAdmin(); // RESTRICTED
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }
+
+  // OTP Logic (Mock)
+  async sendOTP(phoneNumber: string): Promise<boolean> {
+     await delay(1000); // Simulate SMS gateway delay
+     // In a real app, backend sends SMS. Here we just return true.
+     console.log(`Sending OTP to ${phoneNumber}: 1234`);
+     return true;
+  }
+
+  async verifyOTP(phoneNumber: string, otp: string): Promise<boolean> {
+      await delay(800);
+      return otp === '1234'; // Mock OTP
+  }
+
   // Auth Simulation
+  async loginWithPhone(phoneNumber: string): Promise<User> {
+      await delay(500);
+      // Hardcode a specific phone number as admin for testing
+      const isAdmin = phoneNumber === '9999999999';
+      
+      const user: User = {
+          id: 'u_' + phoneNumber,
+          email: '', // Empty for phone users
+          phoneNumber,
+          name: isAdmin ? 'Admin' : `User ${phoneNumber.slice(-4)}`,
+          isAdmin,
+          watchlist: [],
+          continueWatching: []
+      };
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      return user;
+  }
+
   async login(email: string): Promise<User> {
     await delay(600);
     const isAdmin = email.includes('admin');
@@ -214,6 +289,18 @@ class DataService {
     return user;
   }
 
+  async updateUserProfile(name: string): Promise<User | null> {
+    await delay(400);
+    // Profile updates are self-service, allow non-admin
+    const currentUser = this.getCurrentUser();
+    if(currentUser) {
+      const updated = { ...currentUser, name };
+      localStorage.setItem(USER_KEY, JSON.stringify(updated));
+      return updated;
+    }
+    return null;
+  }
+
   getCurrentUser(): User | null {
     const u = localStorage.getItem(USER_KEY);
     return u ? JSON.parse(u) : null;
@@ -221,6 +308,67 @@ class DataService {
 
   logout() {
     localStorage.removeItem(USER_KEY);
+  }
+
+  // Admin User Management (Mock) - RESTRICTED
+  async getAllUsers(): Promise<User[]> {
+      await delay(500);
+      this.ensureAdmin(); // RESTRICTED
+
+      const currentUser = this.getCurrentUser();
+      // Generate some mock users
+      const mockUsers: User[] = [
+          { id: 'u_1', email: 'john.doe@example.com', name: 'John Doe', isAdmin: false, watchlist: [], continueWatching: [] },
+          { id: 'u_2', email: 'sarah.smith@test.com', name: 'Sarah Smith', isAdmin: false, watchlist: [], continueWatching: [] },
+          { id: 'u_3', email: 'admin@bioscoop.com', name: 'Admin', isAdmin: true, watchlist: [], continueWatching: [] },
+          { id: 'u_4', email: 'mike.ross@law.com', name: 'Mike Ross', isAdmin: false, watchlist: [], continueWatching: [] },
+          { id: 'u_5', phoneNumber: '9876543210', email: '', name: 'Mobile User', isAdmin: false, watchlist: [], continueWatching: [] },
+      ];
+      
+      // If current user is unique (not in mock), add them
+      if (currentUser) {
+         const exists = mockUsers.find(u => 
+             (u.email && u.email === currentUser.email) || 
+             (u.phoneNumber && u.phoneNumber === currentUser.phoneNumber)
+         );
+         if (!exists) mockUsers.unshift(currentUser);
+      }
+      
+      return mockUsers;
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+      await delay(400);
+      this.ensureAdmin(); // RESTRICTED
+
+      // In a real app, delete from DB. Here we just pretend.
+      console.log(`User ${userId} deleted by Admin`);
+  }
+
+  // Downloads Management
+  getDownloads(): Download[] {
+    return this.getDownloadsFromStorage();
+  }
+
+  addDownload(download: Download) {
+    const current = this.getDownloadsFromStorage();
+    // Prevent duplicates for same content+quality
+    const exists = current.find(d => d.contentId === download.contentId && d.quality === download.quality);
+    if (!exists) {
+       current.unshift(download);
+       this.saveDownloadsToStorage(current);
+    }
+  }
+
+  removeDownload(contentId: string) {
+    const current = this.getDownloadsFromStorage();
+    const filtered = current.filter(d => d.contentId !== contentId);
+    this.saveDownloadsToStorage(filtered);
+  }
+
+  isDownloaded(contentId: string): boolean {
+    const current = this.getDownloadsFromStorage();
+    return current.some(d => d.contentId === contentId);
   }
 }
 

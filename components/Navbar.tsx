@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Bell, Menu, X, User as UserIcon, LogOut, LayoutDashboard, Clock } from 'lucide-react';
+import { Search, Bell, Menu, X, User as UserIcon, LogOut, LayoutDashboard, Clock, Settings } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, Content } from '../types';
 import { dataService } from '../services/dataService';
@@ -248,19 +249,31 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             )}
             
             {user ? (
-              <div className="flex items-center gap-4">
-                 {user.isAdmin && (
-                    <Link to="/admin" className="text-brand-400 hover:text-brand-300 flex items-center gap-1">
-                       <LayoutDashboard size={18} />
-                       <span className="text-xs font-semibold">ADMIN</span>
-                    </Link>
-                 )}
-                <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-sm font-bold border border-white/20">
-                  {user.name[0].toUpperCase()}
-                </div>
-                <button onClick={onLogout} className="text-gray-400 hover:text-white">
-                  <LogOut size={20} />
-                </button>
+              <div className="flex items-center gap-4 group relative">
+                 {/* User Dropdown */}
+                 <div className="flex items-center gap-3 cursor-pointer py-2">
+                    <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-sm font-bold border border-white/20">
+                      {user.name[0].toUpperCase()}
+                    </div>
+                 </div>
+
+                 <div className="absolute right-0 top-12 w-56 bg-dark-900 border border-gray-800 rounded-xl shadow-2xl py-2 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all transform origin-top-right">
+                    <div className="px-4 py-3 border-b border-gray-800">
+                       <p className="text-sm font-bold text-white truncate">{user.name}</p>
+                       <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                    </div>
+                    {user.isAdmin && (
+                        <Link to="/admin" className="flex items-center gap-3 px-4 py-3 text-sm text-brand-400 hover:bg-dark-800 transition-colors">
+                           <LayoutDashboard size={16} /> Admin Dashboard
+                        </Link>
+                     )}
+                     <Link to="/settings" className="flex items-center gap-3 px-4 py-3 text-sm text-gray-300 hover:bg-dark-800 hover:text-white transition-colors">
+                        <Settings size={16} /> Settings
+                     </Link>
+                     <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-dark-800 transition-colors text-left">
+                        <LogOut size={16} /> Sign Out
+                     </button>
+                 </div>
               </div>
             ) : (
               <Link to="/login" className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-1.5 rounded-md text-sm font-semibold transition-colors">
@@ -283,7 +296,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
 
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
-        <div className="md:hidden bg-dark-950 border-t border-gray-800 absolute w-full">
+        <div className="md:hidden bg-dark-950 border-t border-gray-800 absolute w-full h-screen overflow-y-auto pb-20">
           <div className="px-4 pt-2 pb-6 space-y-2">
              <form onSubmit={handleSearch} className="mb-4 mt-2">
                 <div className="relative">
@@ -321,13 +334,17 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout }) => {
             <div className="border-t border-gray-800 my-2 pt-2">
                {user ? (
                   <>
+                     <div className="px-3 py-2 text-gray-500 text-xs font-bold uppercase tracking-wider">Account</div>
                      {user.isAdmin && (
-                        <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-2 text-brand-400 font-medium">
-                           Admin Dashboard
+                        <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 text-brand-400 font-medium">
+                           <LayoutDashboard size={18} /> Admin Dashboard
                         </Link>
                      )}
-                     <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} className="block w-full text-left px-3 py-2 text-red-400 font-medium">
-                        Sign Out
+                     <Link to="/settings" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 text-gray-300 font-medium hover:text-white">
+                        <Settings size={18} /> Settings
+                     </Link>
+                     <button onClick={() => { onLogout(); setIsMobileMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-red-400 font-medium hover:bg-dark-900">
+                        <LogOut size={18} /> Sign Out
                      </button>
                   </>
                ) : (
