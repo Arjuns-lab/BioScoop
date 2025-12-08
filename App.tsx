@@ -8,11 +8,12 @@ import Admin from './pages/Admin';
 import SettingsPage from './pages/Settings';
 import MyList from './pages/MyList';
 import { dataService } from './services/dataService';
+import { supabase } from './services/supabaseClient';
 import { User, PlatformSettings } from './types';
 import { Phone, Mail, ArrowRight, Loader2, KeyRound, ArrowLeft, Bell, ShieldAlert } from 'lucide-react';
 
 // Enhanced Login Component with Mobile OTP & Email Toggle
-const Login = ({ onLogin }: { onLogin: (identifier: string, method: 'email' | 'phone') => void }) => {
+const Login = ({ onLogin }: { onLogin: (identifier: string, method: 'email' | 'phone') => Promise<void> }) => {
    const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
    const [loading, setLoading] = useState(false);
    
@@ -39,20 +40,26 @@ const Login = ({ onLogin }: { onLogin: (identifier: string, method: 'email' | 'p
       e.preventDefault();
       setLoading(true);
       const isValid = await dataService.verifyOTP(phoneNumber, otp);
-      setLoading(false);
       
       if(isValid) {
-         onLogin(phoneNumber, 'phone');
+         await onLogin(phoneNumber, 'phone');
       } else {
-         alert('Invalid OTP. Please use 1234');
+         setLoading(false);
+         alert('Invalid OTP.');
       }
    };
 
    // Email Logic
-   const handleEmailLogin = (e: React.FormEvent) => {
+   const handleEmailLogin = async (e: React.FormEvent) => {
       e.preventDefault();
       setLoading(true);
-      onLogin(email, 'email');
+      try {
+        await onLogin(email, 'email');
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
    };
 
    return (
@@ -114,20 +121,19 @@ const Login = ({ onLogin }: { onLogin: (identifier: string, method: 'email' | 'p
                                     <KeyRound className="absolute left-3 top-3.5 text-gray-500" size={18} />
                                     <input 
                                         type="text" 
-                                        placeholder="• • • •" 
+                                        placeholder="• • • • • •" 
                                         className="w-full bg-dark-950 border border-gray-700 pl-10 pr-4 py-3 rounded-lg text-white focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 font-bold tracking-[0.5em] text-center text-lg"
                                         value={otp}
-                                        maxLength={4}
+                                        maxLength={6}
                                         onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
                                         required
                                         autoFocus
                                     />
                                 </div>
-                                <p className="text-xs text-brand-400 mt-2 text-center">Tip: Use 1234 as mock OTP</p>
                             </div>
                             <button 
                                 type="submit" 
-                                disabled={otp.length < 4 || loading}
+                                disabled={otp.length < 6 || loading}
                                 className="w-full bg-brand-600 hover:bg-brand-700 disabled:bg-gray-800 disabled:text-gray-500 text-white py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : 'Verify & Login'}
@@ -198,11 +204,31 @@ const Login = ({ onLogin }: { onLogin: (identifier: string, method: 'email' | 'p
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Auth Init
-    const u = dataService.getCurrentUser();
-    if (u) setUser(u);
+    // Auth Init via Supabase
+    const initAuth = async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+             const u = await dataService.fetchUserProfile(session.user.id);
+             setUser(u);
+        } else {
+            setUser(null);
+        }
+        setLoading(false);
+    };
+    initAuth();
+
+    // Listen for Auth Changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session) {
+            const u = await dataService.fetchUserProfile(session.user.id);
+            setUser(u);
+        } else {
+            setUser(null);
+        }
+    });
 
     // Theme Init
     const savedTheme = localStorage.getItem('bioscoop_theme');
@@ -228,22 +254,39 @@ const App: React.FC = () => {
     };
     loadSettings();
 
+    return () => subscription.unsubscribe();
+
   }, []);
 
   const handleLogin = async (identifier: string, method: 'email' | 'phone') => {
-     let u: User;
-     if (method === 'phone') {
-         u = await dataService.loginWithPhone(identifier);
-     } else {
-         u = await dataService.login(identifier);
+     try {
+        let u: User | null = null;
+        if (method === 'phone') {
+            u = await dataService.loginWithPhone(identifier);
+        } else {
+            u = await dataService.login(identifier);
+        }
+        
+        if (u) {
+            setUser(u);
+        }
+     } catch (err) {
+        alert(err instanceof Error ? err.message : 'Login failed');
      }
-     setUser(u);
   };
 
   const handleLogout = () => {
      dataService.logout();
      setUser(null);
   };
+
+  if (loading) {
+      return (
+          <div className="min-h-screen bg-black flex items-center justify-center">
+              <Loader2 className="text-brand-500 animate-spin" size={48} />
+          </div>
+      );
+  }
 
   // Maintenance Mode Check
   if (platformSettings?.maintenanceMode && user && !user.isAdmin) {

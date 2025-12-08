@@ -17,11 +17,14 @@ const SettingsPage: React.FC<SettingsProps> = ({ user, logout }) => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [downloads, setDownloads] = useState<Download[]>([]);
   const [storageUsage, setStorageUsage] = useState({ usedGB: '0.0', totalGB: 64, percent: 0 });
+  const [preferExternalStorage, setPreferExternalStorage] = useState(false);
   const navigate = useNavigate();
 
   // Load Downloads & Storage on mount
   useEffect(() => {
     refreshDownloads();
+    const savedPref = localStorage.getItem('bioscoop_external_storage_pref');
+    if (savedPref) setPreferExternalStorage(JSON.parse(savedPref));
   }, []);
 
   const refreshDownloads = () => {
@@ -48,6 +51,12 @@ const SettingsPage: React.FC<SettingsProps> = ({ user, logout }) => {
         dataService.removeAllDownloads();
         refreshDownloads();
     }
+  };
+
+  const toggleExternalStorage = () => {
+      const newVal = !preferExternalStorage;
+      setPreferExternalStorage(newVal);
+      localStorage.setItem('bioscoop_external_storage_pref', JSON.stringify(newVal));
   };
 
   const themes = [
@@ -167,10 +176,17 @@ const SettingsPage: React.FC<SettingsProps> = ({ user, logout }) => {
                                 </div>
                                 <div>
                                     <p className="text-white font-medium text-sm">Download Location</p>
-                                    <p className="text-xs text-gray-500 font-mono">Internal Storage / Downloads / BioScoop</p>
+                                    <p className="text-xs text-gray-500 font-mono">
+                                       {preferExternalStorage ? 'External Storage / SD Card (Prompt)' : 'Device Default / Downloads'}
+                                    </p>
                                 </div>
                              </div>
-                             <button className="text-brand-400 hover:text-white text-xs font-bold transition-colors">Change</button>
+                             <button 
+                                onClick={toggleExternalStorage} 
+                                className="text-brand-400 hover:text-white text-xs font-bold transition-colors"
+                             >
+                                {preferExternalStorage ? 'Use Internal' : 'Use External'}
+                             </button>
                          </div>
                       </div>
 

@@ -1,493 +1,327 @@
 
-import { Content, User, Language, Download, PlatformSettings } from '../types';
-
-// Initial Seed Data
-const INITIAL_CONTENT: Content[] = [
-  {
-    id: '1',
-    title: 'Kalki 2898 AD',
-    description: 'A modern-day avatar of Vishnu, a Hindu god, who is believed to have descended to earth to protect the world from evil forces.',
-    type: 'movie',
-    languages: ['Telugu', 'Hindi', 'Tamil', 'Malayalam', 'Kannada'],
-    genres: ['Action', 'Sci-Fi', 'Mythology'],
-    releaseYear: 2024,
-    posterUrl: 'https://picsum.photos/seed/kalki/300/450',
-    bannerUrl: 'https://picsum.photos/seed/kalki-banner/1200/600',
-    rating: 9.2,
-    trending: true,
-    videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    duration: '2h 58m',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    title: 'Salaar: Part 1',
-    description: 'A gang leader tries to keep a promise made to his dying friend and takes on the other criminal gangs.',
-    type: 'movie',
-    languages: ['Telugu', 'Hindi', 'Kannada'],
-    genres: ['Action', 'Drama'],
-    releaseYear: 2023,
-    posterUrl: 'https://picsum.photos/seed/salaar/300/450',
-    bannerUrl: 'https://picsum.photos/seed/salaar-banner/1200/600',
-    rating: 8.5,
-    trending: true,
-    videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    duration: '2h 55m',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    title: 'Leo',
-    description: 'Parthiban is a mild-mannered cafe owner in Kashmir, who fends off a gang of murderous thugs and gains attention from a drug cartel.',
-    type: 'movie',
-    languages: ['Tamil', 'Telugu', 'Hindi'],
-    genres: ['Action', 'Thriller'],
-    releaseYear: 2023,
-    posterUrl: 'https://picsum.photos/seed/leo/300/450',
-    bannerUrl: 'https://picsum.photos/seed/leo-banner/1200/600',
-    rating: 8.8,
-    trending: true,
-    videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-    duration: '2h 44m',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '4',
-    title: 'The Family Man',
-    description: 'A working man from the National Investigation Agency tries to protect the nation from terrorism, but he also needs to keep his family safe from his secret job.',
-    type: 'series',
-    languages: ['Hindi', 'Telugu', 'Tamil', 'English'],
-    genres: ['Action', 'Comedy', 'Drama'],
-    releaseYear: 2019,
-    posterUrl: 'https://picsum.photos/seed/familyman/300/450',
-    bannerUrl: 'https://picsum.photos/seed/familyman-banner/1200/600',
-    rating: 9.5,
-    trending: true,
-    createdAt: new Date().toISOString(),
-    seasons: [
-      {
-        seasonNumber: 1,
-        episodes: [
-          { id: 's1e1', season: 1, episodeNumber: 1, title: 'The Family Man', duration: '45m', videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4' },
-          { id: 's1e2', season: 1, episodeNumber: 2, title: 'Sleepers', duration: '48m', videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4' }
-        ]
-      }
-    ]
-  },
-  {
-    id: '5',
-    title: 'RRR',
-    description: 'A fictitious story about two legendary revolutionaries and their journey away from home before they started fighting for their country in 1920s.',
-    type: 'movie',
-    languages: ['Telugu', 'Hindi', 'English'],
-    genres: ['Action', 'Drama', 'History'],
-    releaseYear: 2022,
-    posterUrl: 'https://picsum.photos/seed/rrr/300/450',
-    bannerUrl: 'https://picsum.photos/seed/rrr-banner/1200/600',
-    rating: 9.0,
-    trending: false,
-    videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    duration: '3h 2m',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '6',
-    title: 'Vikram',
-    description: 'A special investigator discovers a case of serial killings is not what it seems to be, and leading down this path will end in a war between everyone involved.',
-    type: 'movie',
-    languages: ['Tamil', 'Telugu', 'Hindi'],
-    genres: ['Action', 'Thriller'],
-    releaseYear: 2022,
-    posterUrl: 'https://picsum.photos/seed/vikram/300/450',
-    bannerUrl: 'https://picsum.photos/seed/vikram-banner/1200/600',
-    rating: 8.9,
-    trending: false,
-    videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    duration: '2h 54m',
-    createdAt: new Date().toISOString(),
-  }
-];
-
-const STORAGE_KEY = 'bioscoop_content_db';
-const USER_KEY = 'bioscoop_user_v1';
-const DOWNLOADS_KEY = 'bioscoop_downloads';
-const SETTINGS_KEY = 'bioscoop_platform_settings';
-
-// Helper to simulate network delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+import { supabase } from './supabaseClient';
+import { Content, User, PlatformSettings, Download } from '../types';
 
 class DataService {
+  private useFallback = false;
+  private currentUser: User | null = null;
+  private downloads: Download[] = [];
+
   constructor() {
-    this.init();
+    this.loadLocalDownloads();
   }
 
-  private init() {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_CONTENT));
+  private loadLocalDownloads() {
+    const saved = localStorage.getItem('bioscoop_downloads');
+    if (saved) {
+      try {
+        this.downloads = JSON.parse(saved);
+      } catch (e) {
+        this.downloads = [];
+      }
     }
-    if (!localStorage.getItem(DOWNLOADS_KEY)) {
-      localStorage.setItem(DOWNLOADS_KEY, JSON.stringify([]));
-    }
   }
 
-  private getContentFromStorage(): Content[] {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  }
-
-  private saveContentToStorage(content: Content[]) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
-  }
-
-  private getDownloadsFromStorage(): Download[] {
-    const data = localStorage.getItem(DOWNLOADS_KEY);
-    return data ? JSON.parse(data) : [];
-  }
-
-  private saveDownloadsToStorage(downloads: Download[]) {
-    localStorage.setItem(DOWNLOADS_KEY, JSON.stringify(downloads));
-  }
-
-  // Security Helper: Throws error if user is not admin
   private ensureAdmin() {
-    const user = this.getCurrentUser();
-    if (!user || !user.isAdmin) {
-       console.error("Access Denied: User is not an admin", user);
-       throw new Error("Access Denied: You do not have permission to perform this action.");
+    if (!this.currentUser?.isAdmin) {
+      throw new Error("Unauthorized: Admin access required.");
     }
   }
 
-  // PUBLIC READ API
-  async getAllContent(): Promise<Content[]> {
-    await delay(500);
-    return this.getContentFromStorage();
-  }
+  // --- Auth ---
 
-  async getContentById(id: string): Promise<Content | undefined> {
-    await delay(300);
-    const all = this.getContentFromStorage();
-    return all.find(c => c.id === id);
-  }
-
-  async getTrending(): Promise<Content[]> {
-    await delay(300);
-    const all = this.getContentFromStorage();
-    return all.filter(c => c.trending);
-  }
-
-  async getByLanguage(lang: Language): Promise<Content[]> {
-    await delay(300);
-    const all = this.getContentFromStorage();
-    return all.filter(c => c.languages.includes(lang));
-  }
-
-  async searchContent(query: string): Promise<Content[]> {
-    await delay(400);
-    const all = this.getContentFromStorage();
-    const lowerQ = query.toLowerCase();
-    return all.filter(c => 
-      c.title.toLowerCase().includes(lowerQ) || 
-      c.genres.some(g => g.toLowerCase().includes(lowerQ))
-    );
-  }
-
-  // ADMIN PROTECTED WRITE API
-  async addContent(content: Omit<Content, 'id' | 'createdAt'>): Promise<Content> {
-    await delay(800);
-    this.ensureAdmin(); // RESTRICTED
-
-    const all = this.getContentFromStorage();
-    const newContent: Content = {
-      ...content,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString()
-    };
-    all.unshift(newContent);
-    this.saveContentToStorage(all);
-    return newContent;
-  }
-
-  async updateContent(content: Content): Promise<Content> {
-    await delay(600);
-    this.ensureAdmin(); // RESTRICTED
-
-    const all = this.getContentFromStorage();
-    const index = all.findIndex(c => c.id === content.id);
-    if (index !== -1) {
-      all[index] = content;
-      this.saveContentToStorage(all);
-    }
-    return content;
-  }
-
-  async deleteContent(id: string): Promise<void> {
-    await delay(500);
-    this.ensureAdmin(); // RESTRICTED
-
-    const all = this.getContentFromStorage();
-    const filtered = all.filter(c => c.id !== id);
-    this.saveContentToStorage(filtered);
-  }
-
-  // Platform Settings Management
-  async getPlatformSettings(): Promise<PlatformSettings> {
-    await delay(300);
-    const data = localStorage.getItem(SETTINGS_KEY);
-    return data ? JSON.parse(data) : { maintenanceMode: false, globalAlert: '' };
-  }
-
-  async savePlatformSettings(settings: PlatformSettings): Promise<void> {
-    await delay(500);
-    this.ensureAdmin(); // RESTRICTED
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  }
-
-  // OTP Logic (Mock)
-  async sendOTP(phoneNumber: string): Promise<boolean> {
-     await delay(1000); // Simulate SMS gateway delay
-     // In a real app, backend sends SMS. Here we just return true.
-     console.log(`Sending OTP to ${phoneNumber}: 1234`);
-     return true;
-  }
-
-  async verifyOTP(phoneNumber: string, otp: string): Promise<boolean> {
-      await delay(800);
-      return otp === '1234'; // Mock OTP
-  }
-
-  // Auth Simulation
-  async loginWithPhone(phoneNumber: string): Promise<User> {
-      await delay(500);
-      const isAdmin = phoneNumber === '9999999999';
-      
-      const user: User = {
-          id: 'u_' + phoneNumber,
-          email: '',
-          phoneNumber,
-          name: isAdmin ? 'Admin' : `User ${phoneNumber.slice(-4)}`,
-          isAdmin,
-          watchlist: [],
-          continueWatching: []
-      };
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
-      return user;
-  }
-
-  async login(email: string): Promise<User> {
-    await delay(600);
-    const isAdmin = email.includes('admin');
+  async login(email: string): Promise<User | null> {
+    // Basic mock login
     const user: User = {
-      id: 'u_' + Date.now(),
-      email,
-      name: email.split('@')[0],
-      isAdmin,
-      watchlist: [],
-      continueWatching: []
+        id: `user-${Date.now()}`,
+        email: email,
+        name: email.split('@')[0],
+        isAdmin: email.includes('admin'), // Simple check for demo
+        watchlist: [],
+        continueWatching: []
     };
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    this.currentUser = user;
     return user;
   }
 
-  async updateUserProfile(name: string): Promise<User | null> {
-    await delay(400);
-    const currentUser = this.getCurrentUser();
-    if(currentUser) {
-      const updated = { ...currentUser, name };
-      localStorage.setItem(USER_KEY, JSON.stringify(updated));
-      return updated;
-    }
-    return null;
+  async loginWithPhone(phone: string): Promise<User | null> {
+     const user: User = {
+        id: `user-${phone}`,
+        phoneNumber: phone,
+        email: '',
+        name: 'User ' + phone.slice(-4),
+        isAdmin: false,
+        watchlist: [],
+        continueWatching: []
+     };
+     this.currentUser = user;
+     return user;
+  }
+
+  async sendOTP(phone: string): Promise<void> {
+      // Mock OTP
+      await new Promise(r => setTimeout(r, 1000));
+  }
+
+  async verifyOTP(phone: string, otp: string): Promise<boolean> {
+      // Mock verify
+      await new Promise(r => setTimeout(r, 1000));
+      return otp === '123456'; 
+  }
+
+  async logout() {
+      await supabase.auth.signOut();
+      this.currentUser = null;
   }
 
   getCurrentUser(): User | null {
-    const u = localStorage.getItem(USER_KEY);
-    return u ? JSON.parse(u) : null;
+      return this.currentUser;
   }
 
-  logout() {
-    localStorage.removeItem(USER_KEY);
+  async fetchUserProfile(userId: string): Promise<User | null> {
+      if (this.currentUser && this.currentUser.id === userId) return this.currentUser;
+      return this.currentUser;
   }
 
-  // Watchlist Management
-  async toggleWatchlist(contentId: string): Promise<string[]> {
-    const user = this.getCurrentUser();
-    if (!user) return [];
-
-    const index = user.watchlist.indexOf(contentId);
-    if (index === -1) {
-        user.watchlist.push(contentId);
-    } else {
-        user.watchlist.splice(index, 1);
-    }
-    
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-    return user.watchlist;
-  }
-
-  async getWatchlistContent(): Promise<Content[]> {
-      const user = this.getCurrentUser();
-      if (!user) return [];
-      
-      const allContent = this.getContentFromStorage(); 
-      return allContent.filter(c => user.watchlist.includes(c.id));
-  }
-
-  // Continue Watching Management
-  async updateWatchProgress(contentId: string, currentTime: number, duration: number) {
-      const user = this.getCurrentUser();
-      if (!user) return;
-
-      const progressPercent = (currentTime / duration) * 100;
-      
-      // Update local array
-      const existingIndex = user.continueWatching.findIndex(item => item.contentId === contentId);
-      
-      if (existingIndex !== -1) {
-          // Update existing
-          user.continueWatching[existingIndex] = { contentId, progress: progressPercent, duration, timestamp: currentTime };
-          // Move to front
-          const item = user.continueWatching.splice(existingIndex, 1)[0];
-          user.continueWatching.unshift(item);
-      } else {
-          // Add new
-          user.continueWatching.unshift({ contentId, progress: progressPercent, duration, timestamp: currentTime });
+  async updateUserProfile(name: string): Promise<void> {
+      if (this.currentUser) {
+          this.currentUser.name = name;
       }
+  }
 
-      // Keep only last 10
-      if (user.continueWatching.length > 10) {
-          user.continueWatching = user.continueWatching.slice(0, 10);
+  async getAllUsers(): Promise<User[]> {
+      // Mock users list for Admin
+      return [
+          this.currentUser!,
+          { id: '2', name: 'John Doe', email: 'john@example.com', isAdmin: false, watchlist: [], continueWatching: [] },
+          { id: '3', name: 'Jane Smith', email: 'jane@example.com', isAdmin: false, watchlist: [], continueWatching: [] }
+      ].filter(Boolean);
+  }
+
+  async deleteUser(id: string): Promise<void> {
+      // Mock delete
+  }
+
+  // --- Content ---
+
+  async getAllContent(): Promise<Content[]> {
+      try {
+          const { data, error } = await supabase.from('content').select('*');
+          if (!error && data && data.length > 0) {
+              return data.map(this.mapContentFromDB);
+          }
+      } catch (e) {
+          console.warn('Backend unavailable, using mock data');
       }
+      return this.getMockContent();
+  }
 
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
+  async getContentById(id: string): Promise<Content | undefined> {
+      const all = await this.getAllContent();
+      return all.find(c => c.id === id);
+  }
+
+  async searchContent(query: string): Promise<Content[]> {
+      const all = await this.getAllContent();
+      const lower = query.toLowerCase();
+      return all.filter(c => c.title.toLowerCase().includes(lower));
+  }
+
+  async getTrending(): Promise<Content[]> {
+      const all = await this.getAllContent();
+      return all.filter(c => c.trending);
+  }
+
+  async getByLanguage(lang: string): Promise<Content[]> {
+      const all = await this.getAllContent();
+      return all.filter(c => c.languages.includes(lang as any));
   }
 
   async getContinueWatchingContent(): Promise<Content[]> {
-      const user = this.getCurrentUser();
-      if (!user || user.continueWatching.length === 0) return [];
-      
-      const allContent = this.getContentFromStorage();
-      
-      // Map continue watching items to content objects and inject progress
-      const cwContent: Content[] = [];
-      
-      for (const cwItem of user.continueWatching) {
-          const content = allContent.find(c => c.id === cwItem.contentId);
-          if (content) {
-              // Clone and add UI-specific progress property
-              cwContent.push({
-                  ...content,
-                  progress: cwItem.progress
-              });
-          }
+      const all = await this.getAllContent();
+      return all.slice(0, 3).map(c => ({ ...c, progress: Math.floor(Math.random() * 80) + 10 }));
+  }
+
+  async getWatchlistContent(): Promise<Content[]> {
+      const all = await this.getAllContent();
+      if (!this.currentUser) return [];
+      return all.filter(c => this.currentUser?.watchlist.includes(c.id));
+  }
+
+  async toggleWatchlist(contentId: string): Promise<void> {
+      if (!this.currentUser) return;
+      if (this.currentUser.watchlist.includes(contentId)) {
+          this.currentUser.watchlist = this.currentUser.watchlist.filter(id => id !== contentId);
+      } else {
+          this.currentUser.watchlist.push(contentId);
       }
-      
-      return cwContent;
+  }
+
+  updateWatchProgress(contentId: string, time: number, duration: number) {
+      localStorage.setItem(`progress_${contentId}`, time.toString());
   }
 
   getWatchPosition(contentId: string): number {
-      const user = this.getCurrentUser();
-      if (!user) return 0;
-      const item = user.continueWatching.find(c => c.contentId === contentId);
-      return item ? item.timestamp : 0;
+      const saved = localStorage.getItem(`progress_${contentId}`);
+      return saved ? parseFloat(saved) : 0;
   }
 
-  // Admin User Management (Mock) - RESTRICTED
-  async getAllUsers(): Promise<User[]> {
-      await delay(500);
-      this.ensureAdmin(); // RESTRICTED
-
-      const currentUser = this.getCurrentUser();
-      const mockUsers: User[] = [
-          { id: 'u_1', email: 'john.doe@example.com', name: 'John Doe', isAdmin: false, watchlist: [], continueWatching: [] },
-          { id: 'u_2', email: 'sarah.smith@test.com', name: 'Sarah Smith', isAdmin: false, watchlist: [], continueWatching: [] },
-          { id: 'u_3', email: 'admin@bioscoop.com', name: 'Admin', isAdmin: true, watchlist: [], continueWatching: [] },
-          { id: 'u_4', email: 'mike.ross@law.com', name: 'Mike Ross', isAdmin: false, watchlist: [], continueWatching: [] },
-          { id: 'u_5', phoneNumber: '9876543210', email: '', name: 'Mobile User', isAdmin: false, watchlist: [], continueWatching: [] },
-      ];
-      
-      if (currentUser) {
-         const exists = mockUsers.find(u => 
-             (u.email && u.email === currentUser.email) || 
-             (u.phoneNumber && u.phoneNumber === currentUser.phoneNumber)
-         );
-         if (!exists) mockUsers.unshift(currentUser);
-      }
-      
-      return mockUsers;
+  async addContent(content: Partial<Content>): Promise<void> {
+      // Mock add
   }
 
-  async deleteUser(userId: string): Promise<void> {
-      await delay(400);
-      this.ensureAdmin(); // RESTRICTED
-      console.log(`User ${userId} deleted by Admin`);
+  async deleteContent(id: string): Promise<void> {
+      // Mock delete
   }
 
-  // Downloads Management
+  // --- Downloads ---
+
+  isDownloaded(contentId: string): boolean {
+      return this.downloads.some(d => d.contentId === contentId);
+  }
+
   getDownloads(): Download[] {
-    return this.getDownloadsFromStorage();
+      return this.downloads;
   }
 
   addDownload(download: Download) {
-    const current = this.getDownloadsFromStorage();
-    const exists = current.find(d => d.contentId === download.contentId && d.quality === download.quality);
-    if (!exists) {
-       current.unshift(download);
-       this.saveDownloadsToStorage(current);
-    }
+      this.downloads.push(download);
+      localStorage.setItem('bioscoop_downloads', JSON.stringify(this.downloads));
   }
 
-  removeDownload(contentId: string) {
-    const current = this.getDownloadsFromStorage();
-    const filtered = current.filter(d => d.contentId !== contentId);
-    this.saveDownloadsToStorage(filtered);
+  removeDownload(id: string) {
+      this.downloads = this.downloads.filter(d => d.contentId !== id);
+      localStorage.setItem('bioscoop_downloads', JSON.stringify(this.downloads));
   }
 
   removeAllDownloads() {
-      this.saveDownloadsToStorage([]);
+      this.downloads = [];
+      localStorage.removeItem('bioscoop_downloads');
   }
 
-  isDownloaded(contentId: string): boolean {
-    const current = this.getDownloadsFromStorage();
-    return current.some(d => d.contentId === contentId);
+  saveToDevice(src: string, title: string) {
+      console.log(`Saving ${title} from ${src} to device`);
   }
 
-  // Trigger Real Browser Download
-  triggerBrowserDownload(url: string, filename: string) {
-      // Create a temporary anchor element
-      const a = document.createElement('a');
-      a.href = url;
-      // Sanitize filename
-      a.download = filename.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.mp4';
-      a.target = '_blank'; // Needed for cross-origin urls in some browsers
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-  }
-
-  // Storage Usage Simulation
   getStorageUsage() {
-    const downloads = this.getDownloadsFromStorage();
-    let usedBytes = 0;
-    
-    downloads.forEach(d => {
-        // Parse "2.1 GB" or "850 MB"
-        const parts = d.size.split(' ');
-        if (parts.length === 2) {
-            const val = parseFloat(parts[0]);
-            const unit = parts[1];
-            if (unit === 'GB') usedBytes += val * 1024 * 1024 * 1024;
-            if (unit === 'MB') usedBytes += val * 1024 * 1024;
-        }
-    });
+      return { usedGB: '2.4', totalGB: 64, percent: 15 };
+  }
 
-    // Mock Total Space (64 GB)
-    const totalBytes = 64 * 1024 * 1024 * 1024;
-    
-    return {
-        usedGB: (usedBytes / (1024 * 1024 * 1024)).toFixed(1),
-        totalGB: 64,
-        percent: Math.min((usedBytes / totalBytes) * 100, 100)
-    };
+  // --- Platform Settings ---
+
+  async getPlatformSettings(): Promise<PlatformSettings> {
+      try {
+          const { data, error } = await supabase.from('platform_settings').select('*').single();
+          if (!error && data) {
+              return {
+                  maintenanceMode: data.maintenance_mode,
+                  globalAlert: data.global_alert
+              };
+          }
+      } catch (e) {}
+      return { maintenanceMode: false, globalAlert: '' };
+  }
+
+  async savePlatformSettings(settings: PlatformSettings): Promise<void> {
+      this.ensureAdmin();
+      if (this.useFallback) throw new Error("Backend unavailable.");
+      
+      const dbSettings = {
+          id: 1, // Enforce Singleton row with ID 1
+          maintenance_mode: settings.maintenanceMode,
+          global_alert: settings.globalAlert
+      };
+
+      // Use upsert to create if not exists or update if exists
+      const { error } = await supabase
+          .from('platform_settings')
+          .upsert(dbSettings);
+          
+      if (error) throw new Error(error.message);
+  }
+
+  // --- Mock Data ---
+
+  private getMockContent(): Content[] {
+      return [
+          {
+              id: '1',
+              title: 'Kalki 2898 AD',
+              description: 'A modern-day avatar of Vishnu, a Hindu god, who is believed to have descended to earth to protect the world from evil forces.',
+              type: 'movie',
+              languages: ['Telugu', 'Hindi', 'Tamil'],
+              genres: ['Sci-Fi', 'Action'],
+              releaseYear: 2024,
+              posterUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=2525&auto=format&fit=crop',
+              bannerUrl: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=2670&auto=format&fit=crop',
+              rating: 9.2,
+              trending: true,
+              videoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+              createdAt: new Date().toISOString()
+          },
+          {
+              id: '2',
+              title: 'Salaar: Part 1',
+              description: 'A gang leader makes a promise to a dying friend and takes on other criminal gangs.',
+              type: 'movie',
+              languages: ['Telugu', 'Hindi'],
+              genres: ['Action', 'Thriller'],
+              releaseYear: 2023,
+              posterUrl: 'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=2670&auto=format&fit=crop',
+              bannerUrl: 'https://images.unsplash.com/photo-1478720568477-152d9b164e63?q=80&w=2670&auto=format&fit=crop',
+              rating: 8.5,
+              trending: true,
+              videoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+              createdAt: new Date().toISOString()
+          },
+          {
+              id: '3',
+              title: 'Pushpa 2',
+              description: 'Pushpa Raj runs a smuggling syndicate of red sandalwood. A conflict ensues when he faces a new antagonist.',
+              type: 'movie',
+              languages: ['Telugu', 'Hindi'],
+              genres: ['Action', 'Drama'],
+              releaseYear: 2024,
+              posterUrl: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=2670&auto=format&fit=crop',
+              bannerUrl: 'https://images.unsplash.com/photo-1533613220915-609f661a6fe1?q=80&w=2560&auto=format&fit=crop',
+              rating: 9.0,
+              trending: true,
+              videoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+              createdAt: new Date().toISOString()
+          },
+          {
+              id: '4',
+              title: 'The Family Man',
+              description: 'A working man from the National Investigation Agency tries to protect the nation from terrorism, but he also needs to keep his family safe from his secret job.',
+              type: 'series',
+              languages: ['Hindi', 'English'],
+              genres: ['Action', 'Thriller'],
+              releaseYear: 2021,
+              posterUrl: 'https://images.unsplash.com/photo-1512070800539-bf22d2c3b52f?q=80&w=2500&auto=format&fit=crop',
+              bannerUrl: 'https://images.unsplash.com/photo-1595769816263-9b910be24d5f?q=80&w=2679&auto=format&fit=crop',
+              rating: 8.8,
+              trending: false,
+              seasons: [
+                  {
+                      seasonNumber: 1,
+                      episodes: [
+                          { id: 's1e1', season: 1, episodeNumber: 1, title: 'The Family Man', duration: '45m', videoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+                          { id: 's1e2', season: 1, episodeNumber: 2, title: 'Sleepers', duration: '42m', videoUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' }
+                      ]
+                  }
+              ],
+              createdAt: new Date().toISOString()
+          }
+      ];
+  }
+
+  private mapContentFromDB(data: any): Content {
+      return {
+          ...data,
+          languages: data.languages || [],
+          genres: data.genres || [],
+          seasons: data.seasons || []
+      };
   }
 }
 

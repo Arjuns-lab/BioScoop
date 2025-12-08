@@ -75,6 +75,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
     setAvailableQualities(['Auto']);
     setPlaybackQuality('Auto');
 
+    const handleAutoPlay = () => {
+       if(!resumed && video.paused) {
+           video.play().catch(() => {
+               // Auto-play was prevented or interrupted, which is expected in some browsers or if paused immediately
+               setIsPlaying(false);
+           });
+       }
+    };
+
     if (Hls.isSupported() && (src.endsWith('.m3u8') || !src.endsWith('.mp4'))) {
       const hls = new Hls({
          capLevelToPlayerSize: true,
@@ -93,7 +102,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
         // Default to Auto (-1)
         hls.currentLevel = -1; 
         
-        if (!resumed) video.play().catch(() => {});
+        handleAutoPlay();
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
@@ -114,21 +123,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS (Safari)
       video.src = src;
-      video.addEventListener('loadedmetadata', () => {
-         if(!resumed) video.play().catch(() => {});
-      });
+      video.addEventListener('loadedmetadata', handleAutoPlay);
     } else {
       // Direct MP4
       video.src = src;
-      video.addEventListener('loadedmetadata', () => {
-         if(!resumed) video.play().catch(() => {});
-      });
+      video.addEventListener('loadedmetadata', handleAutoPlay);
     }
 
     return () => {
       if (hlsRef.current) {
         hlsRef.current.destroy();
       }
+      // Remove listeners if needed (React refs might change, but closures are tricky. 
+      // Usually src change remounts everything so it's fine)
     };
   }, [src]);
 
@@ -186,7 +193,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
              if (userWantsResume) {
                  video.currentTime = savedTime;
                  setResumed(true);
-                 // Toast or indication could go here
              }
           }
       }
@@ -194,12 +200,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
 
   const togglePlay = () => {
     if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(() => {
+          // Ignore interruption errors
+        });
       } else {
-        videoRef.current.play();
+        videoRef.current.pause();
       }
-      setIsPlaying(!isPlaying);
+      // Don't manually setIsPlaying here; rely on onPlay/onPause events
     }
   };
 
@@ -207,16 +215,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
     if (videoRef.current) {
       const current = videoRef.current.currentTime;
       setCurrentTime(current);
-      setProgress((current / videoRef.current.duration) * 100);
+      if (videoRef.current.duration) {
+        setProgress((current / videoRef.current.duration) * 100);
+      }
     }
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = (parseFloat(e.target.value) / 100) * duration;
+    const val = parseFloat(e.target.value);
+    const time = (val / 100) * duration;
     if (videoRef.current) {
       videoRef.current.currentTime = time;
       setCurrentTime(time);
-      setProgress(parseFloat(e.target.value));
+      setProgress(val);
     }
   };
 
@@ -273,7 +284,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
 
       if (downloadIntervalRef.current) clearInterval(downloadIntervalRef.current);
 
-      // Simulate download with variable speed
+      // Simulate download with variable speed to visualize progress
       downloadIntervalRef.current = window.setInterval(() => {
           setDownloadProgress(prev => {
               const increment = Math.random() * 8 + 2; // Random speed
@@ -305,10 +316,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
           });
       }
 
-      // 2. Trigger Real Download if applicable
+      // 2. Trigger Real Download via File System API (or Fallback)
       if (src && !src.endsWith('.m3u8')) {
-          dataService.triggerBrowserDownload(src, title);
-          setShowToast('Saved to device Download folder');
+          dataService.saveToDevice(src, title);
+          setShowToast('Saved to Device Storage');
           setTimeout(() => setShowToast(''), 4000);
       } else {
           setShowToast('Saved to App Offline Storage');
@@ -339,6 +350,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
   };
 
   const formatTime = (time: number) => {
+    if (isNaN(time)) return '0:00';
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -366,8 +378,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
         className={`w-full h-full transition-all duration-300 ${isRotated ? 'rotate-90 scale-[1.3]' : ''}`}
         style={{ objectFit: screenMode }}
         onTimeUpdate={handleTimeUpdate}
-        onEnded={() => setIsPlaying(false)}
         onLoadedMetadata={handleMetadataLoaded}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         playsInline
       />
 
@@ -485,7 +498,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, subTitle, poster,
                type="range"
                min="0"
                max="100"
-               value={progress}
+               value={progress || 0}
                onChange={handleSeek}
                className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500 hover:h-2 transition-all"
                style={{ backgroundSize: `${progress}% 100%` }}
